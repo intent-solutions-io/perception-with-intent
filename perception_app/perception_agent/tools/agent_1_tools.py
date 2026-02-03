@@ -105,7 +105,7 @@ def load_sources_from_firestore() -> List[Dict[str, Any]]:
     return []
 
 
-async def fetch_rss(feed_url: str, time_window_hours: int = 24, max_items: int = 50, request_id: Optional[str] = None) -> List[Dict[str, Any]]:
+async def fetch_rss(feed_url: str, time_window_hours: int = 24, max_items: int = 50, request_id: Optional[str] = None) -> Dict[str, Any]:
     """
     Call the MCP fetch_rss_feed endpoint to get articles from an RSS feed.
 
@@ -116,7 +116,9 @@ async def fetch_rss(feed_url: str, time_window_hours: int = 24, max_items: int =
         request_id: Optional tracking ID
 
     Returns:
-        List of normalized article dicts
+        Dict with:
+        - articles: List of normalized article dicts
+        - feed_metadata: Feed-level metadata (title, link, description)
     """
     endpoint = f"{MCP_BASE_URL}/mcp/tools/fetch_rss_feed"
 
@@ -149,7 +151,10 @@ async def fetch_rss(feed_url: str, time_window_hours: int = 24, max_items: int =
                 "article_count": data.get('article_count', 0)
             }))
 
-            return data.get('articles', [])
+            return {
+                "articles": data.get('articles', []),
+                "feed_metadata": data.get('feed_metadata')
+            }
 
     except httpx.HTTPStatusError as e:
         logger.error(json.dumps({
@@ -160,7 +165,7 @@ async def fetch_rss(feed_url: str, time_window_hours: int = 24, max_items: int =
             "http_status": e.response.status_code,
             "error": e.response.text
         }))
-        return []
+        return {"articles": [], "feed_metadata": None}
     except Exception as e:
         logger.error(json.dumps({
             "severity": "ERROR",
@@ -169,7 +174,82 @@ async def fetch_rss(feed_url: str, time_window_hours: int = 24, max_items: int =
             "feed_url": feed_url,
             "error": str(e)
         }))
-        return []
+        return {"articles": [], "feed_metadata": None}
+
+
+async def upsert_author_for_feed(
+    feed_url: str,
+    articles: List[Dict[str, Any]],
+    feed_metadata: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """
+    Call the MCP upsert_author endpoint to create/update author record.
+
+    Args:
+        feed_url: RSS feed URL
+        articles: Articles from this feed
+        feed_metadata: Feed-level metadata from RSS response
+
+    Returns:
+        Dict with author_id, status, etc.
+    """
+    if not articles:
+        return {"author_id": None, "status": "skipped", "reason": "No articles"}
+
+    endpoint = f"{MCP_BASE_URL}/mcp/tools/upsert_author"
+
+    # Convert articles to the expected format
+    formatted_articles = []
+    for article in articles:
+        formatted_articles.append({
+            "title": article.get("title", "Untitled"),
+            "url": article.get("url", ""),
+            "source_id": article.get("source_id", ""),
+            "published_at": article.get("published_at", ""),
+            "summary": article.get("summary"),
+            "categories": article.get("categories", [])
+        })
+
+    payload = {
+        "feed_url": feed_url,
+        "articles": formatted_articles,
+        "feed_metadata": feed_metadata
+    }
+
+    logger.info(json.dumps({
+        "severity": "INFO",
+        "tool": "agent_1",
+        "operation": "upsert_author_for_feed",
+        "feed_url": feed_url,
+        "article_count": len(articles)
+    }))
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(endpoint, json=payload)
+            response.raise_for_status()
+            data = response.json()
+
+            logger.info(json.dumps({
+                "severity": "INFO",
+                "tool": "agent_1",
+                "operation": "upsert_author_for_feed",
+                "feed_url": feed_url,
+                "author_id": data.get("author_id"),
+                "status": data.get("status")
+            }))
+
+            return data
+
+    except Exception as e:
+        logger.error(json.dumps({
+            "severity": "ERROR",
+            "tool": "agent_1",
+            "operation": "upsert_author_for_feed",
+            "feed_url": feed_url,
+            "error": str(e)
+        }))
+        return {"author_id": None, "status": "failed", "error": str(e)}
 
 
 def normalize_article(raw: Dict[str, Any], source_id: str, category: Optional[str] = None) -> Dict[str, Any]:
@@ -253,6 +333,8 @@ async def harvest_all_sources(time_window_hours: int = 24, max_items_per_source:
     all_articles = []
     total_fetched = 0
 
+    authors_upserted = 0
+
     for source in sources:
         source_type = source.get('type')
         source_id = source.get('source_id')
@@ -261,19 +343,34 @@ async def harvest_all_sources(time_window_hours: int = 24, max_items_per_source:
 
         if source_type == 'rss':
             # Fetch RSS feed via MCP
-            raw_articles = await fetch_rss(
+            fetch_result = await fetch_rss(
                 feed_url=source_url,
                 time_window_hours=time_window_hours,
                 max_items=max_items_per_source,
                 request_id=f"harvest_{source_id}"
             )
 
+            raw_articles = fetch_result.get('articles', [])
+            feed_metadata = fetch_result.get('feed_metadata')
+
             # Normalize each article
+            normalized_articles = []
             for raw in raw_articles:
                 normalized = normalize_article(raw, source_id, category)
                 all_articles.append(normalized)
+                normalized_articles.append(normalized)
 
             total_fetched += len(raw_articles)
+
+            # Upsert author for this feed
+            if normalized_articles:
+                author_result = await upsert_author_for_feed(
+                    feed_url=source_url,
+                    articles=normalized_articles,
+                    feed_metadata=feed_metadata
+                )
+                if author_result.get('status') in ('created', 'updated'):
+                    authors_upserted += 1
 
         # TODO Phase 6: Handle 'api' and 'web' source types
         # elif source_type == 'api':
@@ -287,11 +384,13 @@ async def harvest_all_sources(time_window_hours: int = 24, max_items_per_source:
         "operation": "harvest_all_sources",
         "source_count": len(sources),
         "total_fetched": total_fetched,
-        "articles_after_normalization": len(all_articles)
+        "articles_after_normalization": len(all_articles),
+        "authors_upserted": authors_upserted
     }))
 
     return {
         "articles": all_articles,
         "source_count": len(sources),
-        "total_fetched": total_fetched
+        "total_fetched": total_fetched,
+        "authors_upserted": authors_upserted
     }

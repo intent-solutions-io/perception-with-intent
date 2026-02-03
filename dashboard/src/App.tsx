@@ -4,6 +4,7 @@ import { auth } from './firebase'
 import Dashboard from './pages/Dashboard'
 import Topics from './pages/Topics'
 import DailyBriefs from './pages/DailyBriefs'
+import Authors from './pages/Authors'
 import About from './pages/About'
 import Login from './pages/Login'
 import ProtectedRoute from './components/ProtectedRoute'
@@ -42,6 +43,9 @@ function Navigation() {
               </Link>
               <Link to="/briefs" className="text-zinc-600 hover:text-primary transition-colors">
                 Daily Briefs
+              </Link>
+              <Link to="/authors" className="text-zinc-600 hover:text-primary transition-colors">
+                Authors
               </Link>
             </div>
           </div>
@@ -91,6 +95,14 @@ function App() {
               element={
                 <ProtectedRoute>
                   <DailyBriefs />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/authors"
+              element={
+                <ProtectedRoute>
+                  <Authors />
                 </ProtectedRoute>
               }
             />

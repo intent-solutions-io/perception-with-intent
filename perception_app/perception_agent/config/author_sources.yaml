@@ -1,0 +1,121 @@
+# Author Feed Sources Configuration
+# These are the external sources from which we import author/feed data
+# Updated: 2025-12-29
+
+# Import sources - each contains curated lists of RSS/blog feeds
+sources:
+  # Hacker News Popularity Gist - High-quality tech blogs sorted by HN popularity
+  - id: hn-gist
+    name: "HN Blog Popularity Gist"
+    type: gist
+    url: "https://gist.githubusercontent.com/emschwartz/608934c1817ce9b7baf3f5b9186cae6b/raw/hn-blog-popularity.txt"
+    estimated_feeds: 90
+    format: text  # Tab-separated: domain, score
+    active: true
+
+  # awesome-rss-feeds - Large collection across many categories
+  - id: awesome-rss
+    name: "plenaryapp/awesome-rss-feeds"
+    type: github
+    url: "https://raw.githubusercontent.com/plenaryapp/awesome-rss-feeds/master/README.md"
+    estimated_feeds: 500
+    format: markdown  # Links in markdown format
+    active: true
+
+  # awesome-AI-feeds - AI-focused RSS feeds
+  - id: awesome-ai
+    name: "RSS-Renaissance/awesome-AI-feeds"
+    type: github
+    url: "https://raw.githubusercontent.com/RSS-Renaissance/awesome-AI-feeds/main/README.md"
+    estimated_feeds: 30
+    format: markdown
+    active: true
+
+  # awesome_ML_AI_RSS_feed - ML/AI focused
+  - id: awesome-ml
+    name: "vishalshar/awesome_ML_AI_RSS_feed"
+    type: github
+    url: "https://raw.githubusercontent.com/vishalshar/awesome_ML_AI_RSS_feed/main/README.md"
+    estimated_feeds: 50
+    format: markdown
+    active: true
+
+  # awesome-tech-rss - Tech RSS feeds
+  - id: awesome-tech
+    name: "tuan3w/awesome-tech-rss"
+    type: github
+    url: "https://raw.githubusercontent.com/tuan3w/awesome-tech-rss/master/README.md"
+    estimated_feeds: 50
+    format: markdown
+    active: true
+
+  # allainews_sources - AI news sources
+  - id: allainews
+    name: "foorilla/allainews_sources"
+    type: github
+    url: "https://raw.githubusercontent.com/foorilla/allainews_sources/main/sources.json"
+    estimated_feeds: 40
+    format: json
+    active: true
+
+  # Local RSS sources - Already verified feeds from rss_sources.yaml
+  - id: local-verified
+    name: "Local Verified Feeds"
+    type: local
+    path: "perception_app/perception_agent/config/rss_sources.yaml"
+    estimated_feeds: 128
+    format: yaml
+    active: true
+
+# Total estimated unique feeds: ~760 (after deduplication)
+
+# Category mapping - normalize categories from different sources
+category_mapping:
+  # Tech
+  technology: tech
+  software: tech
+  programming: tech
+  development: tech
+  coding: tech
+
+  # AI/ML
+  ai: ai
+  artificial-intelligence: ai
+  machine-learning: ai
+  ml: ai
+  deep-learning: ai
+  llm: ai
+
+  # Security
+  cybersecurity: security
+  infosec: security
+  hacking: security
+
+  # Business
+  finance: business
+  startup: business
+  entrepreneur: business
+  vc: business
+
+  # Science
+  research: science
+  physics: science
+  biology: science
+  chemistry: science
+
+# Import settings
+settings:
+  # Timeout for fetching each source
+  fetch_timeout_seconds: 30
+
+  # Whether to test feed accessibility during import
+  test_feeds: true
+
+  # Test timeout per feed
+  test_timeout_seconds: 10
+
+  # Maximum feeds to import (for testing, set to null for all)
+  max_feeds: null
+
+  # Batch size for Firestore writes
+  firestore_batch_size: 500

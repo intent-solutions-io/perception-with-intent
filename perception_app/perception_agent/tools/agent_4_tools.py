@@ -4,16 +4,180 @@ Tools for Agent 4 (Brief Writer).
 These functions generate executive daily briefs from top-ranked articles,
 creating summaries, highlights, and strategic insights.
 
+Also handles AI-generated author bios using Gemini.
+
 Phase E2E: Implements production-ready brief generation with section-based organization.
 """
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from datetime import date, datetime, timezone
 import logging
 import json
 import hashlib
+import os
 
 logger = logging.getLogger(__name__)
+
+# Vertex AI configuration
+VERTEX_PROJECT_ID = os.getenv("VERTEX_PROJECT_ID", "perception-with-intent")
+VERTEX_LOCATION = os.getenv("VERTEX_LOCATION", "us-central1")
+
+
+def get_gemini_client():
+    """Get Vertex AI Gemini client (lazy initialization)."""
+    import vertexai
+    from vertexai.generative_models import GenerativeModel
+
+    vertexai.init(project=VERTEX_PROJECT_ID, location=VERTEX_LOCATION)
+    return GenerativeModel("gemini-2.0-flash-exp")
+
+
+async def generate_author_bio(
+    author_id: str,
+    author_name: str,
+    articles: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """
+    Generate an AI bio for an author based on their recent articles.
+
+    Args:
+        author_id: Firestore author document ID
+        author_name: Author's display name
+        articles: List of article dicts (title, summary, content, categories)
+
+    Returns:
+        Dict with:
+        - bio (str): Generated 2-3 sentence bio
+        - status (str): "success" or "failed"
+        - error (str, optional): Error message if failed
+    """
+    if not articles:
+        return {
+            "bio": None,
+            "status": "failed",
+            "error": "No articles provided"
+        }
+
+    try:
+        # Format articles for the prompt
+        article_text = []
+        for i, article in enumerate(articles[:5], 1):  # Use up to 5 articles
+            title = article.get("title", "Untitled")
+            summary = article.get("summary") or article.get("content_snippet") or ""
+            categories = article.get("categories", [])
+            cat_str = f" [{', '.join(categories[:3])}]" if categories else ""
+
+            article_text.append(f"{i}. {title}{cat_str}")
+            if summary:
+                article_text.append(f"   Summary: {summary[:200]}...")
+
+        articles_formatted = "\n".join(article_text)
+
+        prompt = f"""Based on these recent articles by {author_name}, write a 2-3 sentence professional bio.
+
+Focus on:
+- Their expertise and main topics they write about
+- Their writing style or unique perspective (if apparent)
+- Who would benefit from following their content
+
+Articles:
+{articles_formatted}
+
+Write only the bio, no introduction or explanation. Keep it under 150 words."""
+
+        # Call Gemini
+        model = get_gemini_client()
+        response = model.generate_content(prompt)
+
+        bio = response.text.strip()
+
+        # Clean up bio (remove any quotes or extra formatting)
+        bio = bio.strip('"\'')
+        if bio.startswith("Bio:"):
+            bio = bio[4:].strip()
+
+        logger.info(json.dumps({
+            "severity": "INFO",
+            "tool": "agent_4",
+            "operation": "generate_author_bio",
+            "author_id": author_id,
+            "bio_length": len(bio)
+        }))
+
+        return {
+            "bio": bio,
+            "status": "success"
+        }
+
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(json.dumps({
+            "severity": "ERROR",
+            "tool": "agent_4",
+            "operation": "generate_author_bio",
+            "author_id": author_id,
+            "error": error_msg
+        }))
+
+        return {
+            "bio": None,
+            "status": "failed",
+            "error": error_msg
+        }
+
+
+def update_author_bio(
+    author_id: str,
+    bio: str,
+) -> Dict[str, Any]:
+    """
+    Update author's bio in Firestore.
+
+    Args:
+        author_id: Firestore author document ID
+        bio: Generated bio text
+
+    Returns:
+        Dict with status
+    """
+    from google.cloud import firestore
+
+    try:
+        db = firestore.Client(
+            project="perception-with-intent",
+            database="perception-db"
+        )
+
+        now = datetime.now(timezone.utc)
+
+        doc_ref = db.collection("authors").document(author_id)
+        doc_ref.update({
+            "bio": bio,
+            "bioGeneratedAt": now,
+            "updatedAt": now
+        })
+
+        logger.info(json.dumps({
+            "severity": "INFO",
+            "tool": "agent_4",
+            "operation": "update_author_bio",
+            "author_id": author_id,
+            "status": "updated"
+        }))
+
+        return {"status": "updated", "author_id": author_id}
+
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(json.dumps({
+            "severity": "ERROR",
+            "tool": "agent_4",
+            "operation": "update_author_bio",
+            "author_id": author_id,
+            "error": error_msg
+        }))
+
+        return {"status": "failed", "error": error_msg}
 
 
 def generate_executive_summary(articles: List[Dict[str, Any]]) -> str:

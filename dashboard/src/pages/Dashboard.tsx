@@ -3,6 +3,7 @@ import TopicWatchlistCard from '../components/TopicWatchlistCard'
 import SourceHealthCard from '../components/SourceHealthCard'
 import AlertsCard from '../components/AlertsCard'
 import SystemActivityCard from '../components/SystemActivityCard'
+import AuthorsCard from '../components/AuthorsCard'
 import FooterBranding from '../components/FooterBranding'
 
 export default function Dashboard() {
@@ -26,6 +27,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Left Column */}
         <div className="space-y-6">
+          <AuthorsCard />
           <TopicWatchlistCard />
           <AlertsCard />
         </div>
