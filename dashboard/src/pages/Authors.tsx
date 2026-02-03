@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import {
   collection,
   query,
@@ -6,28 +6,19 @@ import {
   limit,
   getDocs,
   startAfter,
+  where,
   Timestamp,
   QueryDocumentSnapshot,
-  DocumentData
+  DocumentData,
+  QueryConstraint
 } from 'firebase/firestore'
 import { db } from '../firebase'
+import { Author } from '../types/author'
 import AuthorRow from '../components/AuthorRow'
 import FooterBranding from '../components/FooterBranding'
 
-interface Author {
-  id: string
-  name: string
-  websiteUrl: string
-  feedUrl: string
-  avatarUrl?: string
-  bio?: string
-  lastPublished: Timestamp
-  articleCount: number
-  categories: string[]
-  status: 'active' | 'inactive' | 'error'
-}
-
 const PAGE_SIZE = 20
+const FILTERED_PAGE_SIZE = 100 // Load more when client-side filters active
 
 type StatusFilter = 'all' | 'active' | 'inactive' | 'error'
 type RecencyFilter = 'all' | '7d' | '30d' | '90d'
@@ -47,6 +38,9 @@ export default function Authors() {
   const [recencyFilter, setRecencyFilter] = useState<RecencyFilter>('all')
   const [categoryFilter, setCategoryFilter] = useState<string>('all')
 
+  // Track if we need to refetch due to filter changes
+  const prevStatusFilter = useRef(statusFilter)
+
   // Debounce search term
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -64,39 +58,75 @@ export default function Authors() {
     return Array.from(categories).sort()
   }, [authors])
 
-  // Initial fetch
-  useEffect(() => {
-    const fetchAuthors = async () => {
-      try {
-        const authorsRef = collection(db, 'authors')
-        const q = query(
-          authorsRef,
-          orderBy('lastPublished', 'desc'),
-          limit(PAGE_SIZE)
-        )
-        const snapshot = await getDocs(q)
+  // Check if client-side filters are active (these don't work well with pagination)
+  const hasClientSideFilters = debouncedSearch || categoryFilter !== 'all' || recencyFilter !== 'all'
 
-        const fetchedAuthors: Author[] = []
-        snapshot.forEach((doc) => {
-          fetchedAuthors.push({
-            id: doc.id,
-            ...doc.data()
-          } as Author)
-        })
+  // Build Firestore query with server-side filters
+  const buildQuery = useCallback((startAfterDoc?: QueryDocumentSnapshot<DocumentData>) => {
+    const authorsRef = collection(db, 'authors')
+    const constraints: QueryConstraint[] = [
+      orderBy('lastPublished', 'desc')
+    ]
 
-        setAuthors(fetchedAuthors)
-        setLastDoc(snapshot.docs[snapshot.docs.length - 1] || null)
-        setHasMore(snapshot.docs.length === PAGE_SIZE)
-      } catch (err) {
-        console.error('Error fetching authors:', err)
-        setError(err instanceof Error ? err.message : 'Failed to load authors')
-      } finally {
-        setLoading(false)
-      }
+    // Server-side filter: status
+    if (statusFilter !== 'all') {
+      constraints.push(where('status', '==', statusFilter))
     }
 
+    // Use larger page size when client-side filters are active
+    const pageSize = hasClientSideFilters ? FILTERED_PAGE_SIZE : PAGE_SIZE
+    constraints.push(limit(pageSize))
+
+    if (startAfterDoc) {
+      constraints.push(startAfter(startAfterDoc))
+    }
+
+    return query(authorsRef, ...constraints)
+  }, [statusFilter, hasClientSideFilters])
+
+  // Fetch authors (initial or after filter change)
+  const fetchAuthors = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+
+    try {
+      const q = buildQuery()
+      const snapshot = await getDocs(q)
+
+      const fetchedAuthors: Author[] = []
+      snapshot.forEach((doc) => {
+        fetchedAuthors.push({
+          id: doc.id,
+          ...doc.data()
+        } as Author)
+      })
+
+      setAuthors(fetchedAuthors)
+      setLastDoc(snapshot.docs[snapshot.docs.length - 1] || null)
+      const pageSize = hasClientSideFilters ? FILTERED_PAGE_SIZE : PAGE_SIZE
+      setHasMore(snapshot.docs.length === pageSize)
+    } catch (err) {
+      console.error('Error fetching authors:', err)
+      setError(err instanceof Error ? err.message : 'Failed to load authors')
+    } finally {
+      setLoading(false)
+    }
+  }, [buildQuery, hasClientSideFilters])
+
+  // Initial fetch and refetch when server-side filters change
+  useEffect(() => {
     fetchAuthors()
-  }, [])
+  }, [statusFilter]) // Only refetch for server-side filter changes
+
+  // Reset when status filter changes
+  useEffect(() => {
+    if (prevStatusFilter.current !== statusFilter) {
+      setAuthors([])
+      setLastDoc(null)
+      setHasMore(true)
+      prevStatusFilter.current = statusFilter
+    }
+  }, [statusFilter])
 
   // Load more
   const loadMore = useCallback(async () => {
@@ -104,13 +134,7 @@ export default function Authors() {
 
     setLoadingMore(true)
     try {
-      const authorsRef = collection(db, 'authors')
-      const q = query(
-        authorsRef,
-        orderBy('lastPublished', 'desc'),
-        startAfter(lastDoc),
-        limit(PAGE_SIZE)
-      )
+      const q = buildQuery(lastDoc)
       const snapshot = await getDocs(q)
 
       const newAuthors: Author[] = []
@@ -123,13 +147,14 @@ export default function Authors() {
 
       setAuthors((prev) => [...prev, ...newAuthors])
       setLastDoc(snapshot.docs[snapshot.docs.length - 1] || null)
-      setHasMore(snapshot.docs.length === PAGE_SIZE)
+      const pageSize = hasClientSideFilters ? FILTERED_PAGE_SIZE : PAGE_SIZE
+      setHasMore(snapshot.docs.length === pageSize)
     } catch (err) {
       console.error('Error loading more authors:', err)
     } finally {
       setLoadingMore(false)
     }
-  }, [lastDoc, loadingMore, hasMore])
+  }, [lastDoc, loadingMore, hasMore, buildQuery, hasClientSideFilters])
 
   // Infinite scroll handler
   useEffect(() => {
@@ -146,10 +171,10 @@ export default function Authors() {
     return () => window.removeEventListener('scroll', handleScroll)
   }, [loadMore])
 
-  // Filter authors (client-side)
+  // Apply client-side filters
   const filteredAuthors = useMemo(() => {
     return authors.filter((author) => {
-      // Search filter
+      // Search filter (client-side)
       if (debouncedSearch) {
         const searchLower = debouncedSearch.toLowerCase()
         const matchesName = author.name.toLowerCase().includes(searchLower)
@@ -162,17 +187,12 @@ export default function Authors() {
         }
       }
 
-      // Status filter
-      if (statusFilter !== 'all' && author.status !== statusFilter) {
-        return false
-      }
-
-      // Category filter
+      // Category filter (client-side)
       if (categoryFilter !== 'all' && !author.categories.includes(categoryFilter)) {
         return false
       }
 
-      // Recency filter
+      // Recency filter (client-side)
       if (recencyFilter !== 'all') {
         const now = new Date()
         const lastPublished = author.lastPublished?.toDate() || new Date(0)
@@ -193,7 +213,7 @@ export default function Authors() {
 
       return true
     })
-  }, [authors, debouncedSearch, statusFilter, categoryFilter, recencyFilter])
+  }, [authors, debouncedSearch, categoryFilter, recencyFilter])
 
   const clearFilters = () => {
     setSearchTerm('')

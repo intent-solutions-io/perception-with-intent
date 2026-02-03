@@ -7,12 +7,16 @@ Phase 4: Returns fake but structurally correct responses.
 Phase 5: Wire up real Firestore batch writes.
 """
 
+import hashlib
 import logging
 import json
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
+from urllib.parse import urlparse
+
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
+from google.cloud import firestore
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -131,9 +135,6 @@ async def upsert_author(request: UpsertAuthorRequest):
 
     Phase implementation: Real Firestore writes.
     """
-    import hashlib
-    from google.cloud import firestore
-
     logger.info(json.dumps({
         "severity": "INFO",
         "message": "Upserting author",
@@ -166,7 +167,6 @@ async def upsert_author(request: UpsertAuthorRequest):
             pub_at = article.published_at
             if pub_at:
                 try:
-                    from datetime import datetime
                     dt = datetime.fromisoformat(pub_at.replace('Z', '+00:00'))
                     if newest_published is None or dt > newest_published:
                         newest_published = dt
@@ -190,7 +190,6 @@ async def upsert_author(request: UpsertAuthorRequest):
 
         if not author_name:
             # Fallback to domain
-            from urllib.parse import urlparse
             parsed = urlparse(request.feed_url)
             author_name = parsed.netloc.replace('www.', '')
 
@@ -199,7 +198,6 @@ async def upsert_author(request: UpsertAuthorRequest):
         if request.feed_metadata and request.feed_metadata.link:
             website_url = request.feed_metadata.link
         else:
-            from urllib.parse import urlparse
             parsed = urlparse(request.feed_url)
             website_url = f"{parsed.scheme}://{parsed.netloc}"
 

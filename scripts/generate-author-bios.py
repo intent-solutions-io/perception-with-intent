@@ -85,45 +85,82 @@ def fetch_author_articles(db, author_id: str, limit: int = 5) -> list:
     """
     Fetch recent articles for an author.
 
-    This queries the articles collection for articles matching the author's feed URL
-    or author name.
+    Strategy:
+    1. First try to query by source_id if articles have it
+    2. Fall back to domain matching from feed URL
+
+    Note: For better performance at scale, add a Firestore index on
+    articles.source_id or add an author_id field to articles.
     """
-    # Get author doc to find feed URL
+    from urllib.parse import urlparse
+
+    # Get author doc to find feed URL and source_id
     author_doc = db.collection('authors').document(author_id).get()
     if not author_doc.exists:
         return []
 
     author_data = author_doc.to_dict()
     feed_url = author_data.get('feedUrl', '')
-
-    # Query articles by source_id (feed URL based) or by matching domain
-    articles = []
-
-    # Try to find articles by source_id matching
-    # Note: In a real implementation, you'd have a proper link between articles and authors
-    # For now, we'll use what's available in the article's metadata
+    author_name = author_data.get('name', '')
 
     articles_ref = db.collection('articles')
-
-    # Query recent articles - in production, you'd filter by author
-    # For now, get recent articles and filter client-side
-    recent = articles_ref.order_by('published_at', direction=firestore.Query.DESCENDING).limit(100).get()
+    articles = []
 
     # Extract domain from feed URL for matching
-    from urllib.parse import urlparse
     feed_domain = urlparse(feed_url).netloc.replace('www.', '')
 
-    for doc in recent:
-        article = doc.to_dict()
+    # Strategy 1: Try to find by source_id (if we stored it as domain-based)
+    # This is more efficient if we have a matching source_id
+    try:
+        source_query = articles_ref.where(
+            'source_id', '==', feed_domain
+        ).order_by(
+            'published_at', direction=firestore.Query.DESCENDING
+        ).limit(limit).get()
 
-        # Match by URL domain
-        article_url = article.get('url', '')
-        article_domain = urlparse(article_url).netloc.replace('www.', '')
+        for doc in source_query:
+            articles.append(doc.to_dict())
 
-        if article_domain == feed_domain:
-            articles.append(article)
-            if len(articles) >= limit:
-                break
+        if articles:
+            return articles
+    except Exception:
+        # Index might not exist, fall back to domain matching
+        pass
+
+    # Strategy 2: Query recent articles and filter by domain
+    # Use pagination to avoid loading too many docs
+    batch_size = 50
+    checked = 0
+    max_check = 500  # Don't scan more than this many articles
+
+    query = articles_ref.order_by(
+        'published_at', direction=firestore.Query.DESCENDING
+    ).limit(batch_size)
+
+    while checked < max_check and len(articles) < limit:
+        docs = list(query.get())
+        if not docs:
+            break
+
+        for doc in docs:
+            article = doc.to_dict()
+            article_url = article.get('url', '')
+            article_domain = urlparse(article_url).netloc.replace('www.', '')
+
+            if article_domain == feed_domain:
+                articles.append(article)
+                if len(articles) >= limit:
+                    break
+
+        checked += len(docs)
+
+        # Get next batch using the last document as cursor
+        if len(docs) == batch_size and len(articles) < limit:
+            query = articles_ref.order_by(
+                'published_at', direction=firestore.Query.DESCENDING
+            ).start_after(docs[-1]).limit(batch_size)
+        else:
+            break
 
     return articles
 

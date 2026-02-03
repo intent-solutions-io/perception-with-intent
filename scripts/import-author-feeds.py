@@ -62,17 +62,13 @@ def slugify(text: str) -> str:
 
 
 def generate_author_id(feed_url: str, name: str) -> str:
-    """Generate deterministic author ID from feed URL."""
-    # Use URL domain + hash for uniqueness
-    parsed = urlparse(feed_url)
-    domain = parsed.netloc.replace('www.', '')
+    """Generate deterministic author ID from feed URL.
 
-    # Create hash for uniqueness
-    url_hash = hashlib.sha256(feed_url.encode()).hexdigest()[:8]
-
-    # Combine slugified domain with hash
-    slug = slugify(domain)
-    return f"{slug}-{url_hash}"
+    Uses the same format as the ingestion pipeline (author-{hash16})
+    to ensure consistency across import and live ingestion.
+    """
+    url_hash = hashlib.sha256(feed_url.encode()).hexdigest()[:16]
+    return f"author-{url_hash}"
 
 
 def extract_website_url(feed_url: str) -> str:

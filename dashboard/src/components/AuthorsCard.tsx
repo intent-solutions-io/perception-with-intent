@@ -1,36 +1,9 @@
 import { useEffect, useState } from 'react'
-import { collection, query, orderBy, limit, getDocs, Timestamp } from 'firebase/firestore'
+import { collection, query, orderBy, limit, getDocs } from 'firebase/firestore'
 import { db } from '../firebase'
 import { Link } from 'react-router-dom'
-
-interface Author {
-  id: string
-  name: string
-  websiteUrl: string
-  avatarUrl?: string
-  bio?: string
-  lastPublished: Timestamp
-  articleCount: number
-  categories: string[]
-  status: 'active' | 'inactive' | 'error'
-}
-
-function formatTimeAgo(timestamp: Timestamp | null): string {
-  if (!timestamp) return 'Unknown'
-
-  const now = new Date()
-  const date = timestamp.toDate()
-  const diffMs = now.getTime() - date.getTime()
-  const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
-  const diffDays = Math.floor(diffHours / 24)
-
-  if (diffHours < 1) return 'Just now'
-  if (diffHours < 24) return `${diffHours}h ago`
-  if (diffDays === 1) return 'Yesterday'
-  if (diffDays < 7) return `${diffDays}d ago`
-  if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`
-  return `${Math.floor(diffDays / 30)}mo ago`
-}
+import { Author } from '../types/author'
+import { formatTimeAgo } from '../utils/time'
 
 export default function AuthorsCard() {
   const [authors, setAuthors] = useState<Author[]>([])

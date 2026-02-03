@@ -255,12 +255,14 @@ async def fetch_rss_feed(request: FetchRSSFeedRequest):
                 break
 
         # Extract feed-level metadata for author tracking
-        feed_metadata = FeedMetadata(
-            title=feed.feed.get('title') if hasattr(feed, 'feed') else None,
-            link=feed.feed.get('link') if hasattr(feed, 'feed') else None,
-            description=feed.feed.get('description') or feed.feed.get('subtitle') if hasattr(feed, 'feed') else None,
-            author=feed.feed.get('author') or feed.feed.get('author_detail', {}).get('name') if hasattr(feed, 'feed') else None,
-        )
+        feed_metadata = FeedMetadata()
+        if hasattr(feed, 'feed'):
+            feed_info = feed.feed
+            feed_metadata.title = feed_info.get('title')
+            feed_metadata.link = feed_info.get('link')
+            feed_metadata.description = feed_info.get('description') or feed_info.get('subtitle')
+            author_detail = feed_info.get('author_detail', {})
+            feed_metadata.author = feed_info.get('author') or author_detail.get('name')
 
         # Build response
         end_time = datetime.now(tz=timezone.utc)
