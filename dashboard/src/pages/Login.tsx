@@ -3,6 +3,7 @@ import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'fire
 import { auth } from '../firebase'
 import { useNavigate, Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
+import { toast } from 'sonner'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -11,13 +12,11 @@ export default function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [isSignUp, setIsSignUp] = useState(false)
-  const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setError('')
     setLoading(true)
 
     try {
@@ -29,7 +28,7 @@ export default function Login() {
       navigate('/')
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Authentication failed'
-      setError(message)
+      toast.error('Authentication Failed', { description: message })
     } finally {
       setLoading(false)
     }
@@ -62,16 +61,6 @@ export default function Login() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {error && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                className="bg-destructive/10 border border-destructive/20 text-destructive px-4 py-3 rounded-lg mb-4 text-sm"
-              >
-                {error}
-              </motion.div>
-            )}
-
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label htmlFor="email" className="block text-sm font-medium text-foreground mb-1.5">
@@ -124,10 +113,7 @@ export default function Login() {
 
             <div className="mt-6 text-center">
               <button
-                onClick={() => {
-                  setIsSignUp(!isSignUp)
-                  setError('')
-                }}
+                onClick={() => setIsSignUp(!isSignUp)}
                 className="text-muted-foreground hover:text-foreground text-sm transition-colors"
               >
                 {isSignUp ? 'Already have an account? Sign in' : "Don't have an account? Sign up"}

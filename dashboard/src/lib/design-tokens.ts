@@ -143,7 +143,17 @@ export const semanticColors = {
   },
 } as const
 
+// Relevance Score Variants (semantic keys for CVA/cva usage)
+export type RelevanceVariant = 'high' | 'medium' | 'low'
+
+export function getRelevanceVariant(score: number): RelevanceVariant {
+  if (score >= 8) return 'high'
+  if (score >= 5) return 'medium'
+  return 'low'
+}
+
 // Relevance Score Colors (specific to Perception)
+// Note: For new components, prefer using getRelevanceVariant() with CVA
 export const relevanceColors = {
   high: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',    // 8-10
   medium: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',              // 5-7
@@ -151,12 +161,27 @@ export const relevanceColors = {
 } as const
 
 export function getRelevanceColor(score: number): string {
-  if (score >= 8) return relevanceColors.high
-  if (score >= 5) return relevanceColors.medium
-  return relevanceColors.low
+  return relevanceColors[getRelevanceVariant(score)]
+}
+
+// Category Variants (semantic keys for CVA/cva usage)
+export type CategoryVariant =
+  | 'tech' | 'hn-popular' | 'saas_dev' | 'engineering' | 'infrastructure'
+  | 'science' | 'crypto' | 'sports' | 'automotive' | 'world' | 'default'
+
+export function getCategoryVariant(category: string): CategoryVariant {
+  const normalized = category.toLowerCase()
+  const knownCategories: CategoryVariant[] = [
+    'tech', 'hn-popular', 'saas_dev', 'engineering', 'infrastructure',
+    'science', 'crypto', 'sports', 'automotive', 'world'
+  ]
+  return knownCategories.includes(normalized as CategoryVariant)
+    ? (normalized as CategoryVariant)
+    : 'default'
 }
 
 // Category Colors
+// Note: For new components, prefer using getCategoryVariant() with CVA
 export const categoryColors: Record<string, string> = {
   tech: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
   'hn-popular': 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
@@ -172,5 +197,5 @@ export const categoryColors: Record<string, string> = {
 } as const
 
 export function getCategoryColor(category: string): string {
-  return categoryColors[category.toLowerCase()] || categoryColors.default
+  return categoryColors[getCategoryVariant(category)]
 }
