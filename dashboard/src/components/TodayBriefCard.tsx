@@ -2,6 +2,10 @@ import { useEffect, useState } from 'react'
 import { collection, query, orderBy, limit, getDocs } from 'firebase/firestore'
 import { db } from '../firebase'
 import { cleanText } from '../utils/text'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Skeleton } from '@/components/ui/skeleton'
+import { EmptyState, NewspaperIcon } from '@/components/EmptyState'
 
 interface BriefSection {
   section_name: string
@@ -17,14 +21,12 @@ interface BriefSection {
 interface Brief {
   id: string
   date: string
-  // New format
   headline?: string
   sections?: BriefSection[]
   meta?: {
     article_count: number
     section_count: number
   }
-  // Old format
   executiveSummary?: string
   highlights?: string[]
   metrics?: {
@@ -32,6 +34,40 @@ interface Brief {
     topSources?: Record<string, number>
     mainTopics?: string[]
   }
+}
+
+function BriefSkeleton() {
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex justify-between items-start">
+          <Skeleton className="h-6 w-32" />
+          <Skeleton className="h-4 w-24" />
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <Skeleton className="h-4 w-3/4" />
+        <div className="space-y-3">
+          <Skeleton className="h-6 w-24" />
+          <div className="space-y-2">
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-5/6" />
+            <Skeleton className="h-4 w-4/5" />
+          </div>
+        </div>
+        <div className="flex gap-6 pt-4 border-t border-border">
+          <div className="space-y-1">
+            <Skeleton className="h-3 w-16" />
+            <Skeleton className="h-8 w-12" />
+          </div>
+          <div className="space-y-1">
+            <Skeleton className="h-3 w-16" />
+            <Skeleton className="h-8 w-12" />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  )
 }
 
 export default function TodayBriefCard() {
@@ -65,176 +101,179 @@ export default function TodayBriefCard() {
   }, [])
 
   if (loading) {
-    return (
-      <div className="card">
-        <h3 className="text-xl font-bold text-primary mb-4">Today's Brief</h3>
-        <div className="flex items-center justify-center py-8">
-          <div className="text-zinc-500">Loading brief...</div>
-        </div>
-      </div>
-    )
+    return <BriefSkeleton />
   }
 
   if (error) {
     return (
-      <div className="card border-red-200 bg-red-50">
-        <h3 className="text-xl font-bold text-red-700 mb-4">Today's Brief</h3>
-        <div className="text-red-600 text-sm">
-          ⚠️ Error loading brief: {error}
-        </div>
-      </div>
+      <Card className="border-destructive/50 bg-destructive/5">
+        <CardHeader>
+          <CardTitle className="text-destructive">Today's Brief</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-destructive">Error loading brief: {error}</p>
+        </CardContent>
+      </Card>
     )
   }
 
   if (!brief) {
     return (
-      <div className="card">
-        <h3 className="text-xl font-bold text-primary mb-4">Today's Brief</h3>
-        <div className="text-center py-8">
-          <div className="text-zinc-400 text-lg">No brief available yet</div>
-          <p className="text-zinc-500 text-sm mt-2">
-            Daily briefs are generated during ingestion runs
-          </p>
-        </div>
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Today's Brief</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <EmptyState
+            icon={<NewspaperIcon />}
+            title="No brief available yet"
+            description="Daily briefs are generated during ingestion runs. Run an ingestion to generate today's brief."
+          />
+        </CardContent>
+      </Card>
     )
   }
 
   // Handle new format (sections-based)
   if (brief.sections && brief.sections.length > 0) {
     return (
-      <div className="card" data-testid="brief-card">
-        <div className="flex justify-between items-start mb-4">
-          <h3 className="text-xl font-bold text-primary">Today's Brief</h3>
-          <span className="text-sm text-zinc-500">{brief.date}</span>
-        </div>
-
-        {/* Headline */}
-        {brief.headline && (
-          <div className="mb-6">
-            <p className="text-zinc-700 font-medium">{cleanText(brief.headline)}</p>
+      <Card data-testid="brief-card">
+        <CardHeader>
+          <div className="flex justify-between items-start">
+            <CardTitle>Today's Brief</CardTitle>
+            <span className="text-sm text-muted-foreground">{brief.date}</span>
           </div>
-        )}
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Headline */}
+          {brief.headline && (
+            <p className="text-foreground font-medium leading-relaxed">
+              {cleanText(brief.headline)}
+            </p>
+          )}
 
-        {/* Sections */}
-        {brief.sections.map((section, idx) => (
-          <div key={idx} className="mb-6">
-            <h4 className="text-sm font-semibold text-zinc-700 mb-3 flex items-center gap-2">
-              <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs">
+          {/* Sections */}
+          {brief.sections.map((section, idx) => (
+            <div key={idx} className="space-y-3">
+              <Badge variant="secondary" className="font-medium">
                 {section.section_name}
-              </span>
-            </h4>
+              </Badge>
 
-            {/* Key Points */}
-            <ul className="space-y-2 mb-4">
-              {section.key_points.slice(0, 5).map((point, i) => (
-                <li key={i} className="flex items-start">
-                  <span className="text-primary font-bold mr-2">•</span>
-                  <span className="text-zinc-600 flex-1 text-sm">{cleanText(point)}</span>
-                </li>
-              ))}
-            </ul>
+              {/* Key Points */}
+              <ul className="space-y-2">
+                {section.key_points.slice(0, 5).map((point, i) => (
+                  <li key={i} className="flex items-start gap-2">
+                    <span className="text-primary font-bold shrink-0">•</span>
+                    <span className="text-muted-foreground text-sm">{cleanText(point)}</span>
+                  </li>
+                ))}
+              </ul>
 
-            {/* Top Articles */}
-            {section.top_articles && section.top_articles.length > 0 && (
-              <div className="bg-zinc-50 rounded-lg p-3">
-                <div className="text-xs text-zinc-500 mb-2">Top Stories</div>
-                <div className="space-y-2">
-                  {section.top_articles.slice(0, 3).map((article, i) => (
-                    <a
-                      key={i}
-                      href={article.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="block text-sm text-blue-600 hover:text-blue-800 truncate"
-                    >
-                      {article.title}
-                    </a>
-                  ))}
+              {/* Top Articles */}
+              {section.top_articles && section.top_articles.length > 0 && (
+                <div className="bg-muted/50 rounded-lg p-3">
+                  <div className="text-xs text-muted-foreground mb-2 font-medium">Top Stories</div>
+                  <div className="space-y-2">
+                    {section.top_articles.slice(0, 3).map((article, i) => (
+                      <a
+                        key={i}
+                        href={article.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block text-sm text-primary hover:text-primary/80 hover:underline truncate transition-colors"
+                      >
+                        {article.title}
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+
+          {/* Meta */}
+          {brief.meta && (
+            <div className="border-t border-border pt-4">
+              <div className="flex gap-8">
+                <div>
+                  <div className="text-xs text-muted-foreground">Articles</div>
+                  <div className="text-2xl font-semibold text-foreground tabular-nums">
+                    {brief.meta.article_count}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">Sections</div>
+                  <div className="text-2xl font-semibold text-foreground tabular-nums">
+                    {brief.meta.section_count}
+                  </div>
                 </div>
               </div>
-            )}
-          </div>
-        ))}
-
-        {/* Meta */}
-        {brief.meta && (
-          <div className="border-t border-zinc-200 pt-4">
-            <div className="flex gap-6">
-              <div>
-                <div className="text-zinc-500 text-xs">Articles</div>
-                <div className="text-xl font-bold text-primary">{brief.meta.article_count}</div>
-              </div>
-              <div>
-                <div className="text-zinc-500 text-xs">Sections</div>
-                <div className="text-xl font-bold text-primary">{brief.meta.section_count}</div>
-              </div>
             </div>
-          </div>
-        )}
-      </div>
+          )}
+        </CardContent>
+      </Card>
     )
   }
 
   // Handle old format (executiveSummary-based)
   return (
-    <div className="card" data-testid="brief-card">
-      <div className="flex justify-between items-start mb-4">
-        <h3 className="text-xl font-bold text-primary">Today's Brief</h3>
-        <span className="text-sm text-zinc-500">{brief.date}</span>
-      </div>
-
-      {/* Executive Summary */}
-      {brief.executiveSummary && (
-        <div className="mb-6">
-          <h4 className="text-sm font-semibold text-zinc-700 mb-2">Executive Summary</h4>
-          <p className="text-zinc-600 leading-relaxed">{cleanText(brief.executiveSummary)}</p>
+    <Card data-testid="brief-card">
+      <CardHeader>
+        <div className="flex justify-between items-start">
+          <CardTitle>Today's Brief</CardTitle>
+          <span className="text-sm text-muted-foreground">{brief.date}</span>
         </div>
-      )}
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {/* Executive Summary */}
+        {brief.executiveSummary && (
+          <div>
+            <h4 className="text-sm font-semibold text-foreground mb-2">Executive Summary</h4>
+            <p className="text-muted-foreground leading-relaxed">{cleanText(brief.executiveSummary)}</p>
+          </div>
+        )}
 
-      {/* Highlights */}
-      {brief.highlights && brief.highlights.length > 0 && (
-        <div className="mb-6">
-          <h4 className="text-sm font-semibold text-zinc-700 mb-3">Key Highlights</h4>
-          <ul className="space-y-2">
-            {brief.highlights.map((highlight, index) => (
-              <li key={index} className="flex items-start">
-                <span className="text-primary font-bold mr-2">•</span>
-                <span className="text-zinc-600 flex-1">{cleanText(highlight)}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+        {/* Highlights */}
+        {brief.highlights && brief.highlights.length > 0 && (
+          <div>
+            <h4 className="text-sm font-semibold text-foreground mb-3">Key Highlights</h4>
+            <ul className="space-y-2">
+              {brief.highlights.map((highlight, index) => (
+                <li key={index} className="flex items-start gap-2">
+                  <span className="text-primary font-bold shrink-0">•</span>
+                  <span className="text-muted-foreground">{cleanText(highlight)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
-      {/* Metrics */}
-      {brief.metrics && (
-        <div className="border-t border-zinc-200 pt-4">
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            <div>
-              <div className="text-zinc-500 text-xs">Articles Analyzed</div>
-              <div className="text-xl font-bold text-primary mt-1">
-                {brief.metrics.articleCount}
-              </div>
-            </div>
-            {brief.metrics.mainTopics && brief.metrics.mainTopics.length > 0 && (
-              <div className="col-span-2">
-                <div className="text-zinc-500 text-xs mb-2">Main Topics</div>
-                <div className="flex flex-wrap gap-2">
-                  {brief.metrics.mainTopics.map((topic) => (
-                    <span
-                      key={topic}
-                      className="bg-zinc-100 text-zinc-700 px-2 py-1 rounded text-xs"
-                    >
-                      {topic}
-                    </span>
-                  ))}
+        {/* Metrics */}
+        {brief.metrics && (
+          <div className="border-t border-border pt-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              <div>
+                <div className="text-xs text-muted-foreground">Articles Analyzed</div>
+                <div className="text-2xl font-semibold text-foreground tabular-nums mt-1">
+                  {brief.metrics.articleCount}
                 </div>
               </div>
-            )}
+              {brief.metrics.mainTopics && brief.metrics.mainTopics.length > 0 && (
+                <div className="col-span-2">
+                  <div className="text-xs text-muted-foreground mb-2">Main Topics</div>
+                  <div className="flex flex-wrap gap-2">
+                    {brief.metrics.mainTopics.map((topic) => (
+                      <Badge key={topic} variant="secondary">
+                        {topic}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </CardContent>
+    </Card>
   )
 }

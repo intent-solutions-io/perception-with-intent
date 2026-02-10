@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react'
 import { collection, query, orderBy, limit, getDocs } from 'firebase/firestore'
 import { db } from '../firebase'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Skeleton } from '@/components/ui/skeleton'
+import { EmptyState, ChartBarIcon } from '@/components/EmptyState'
 
 interface IngestionRun {
   id: string
@@ -17,6 +21,35 @@ interface IngestionRun {
     alertsTriggered?: number
   }
   duration?: number
+}
+
+function ActivitySkeleton() {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>System Activity</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="p-4 border border-border rounded-lg">
+            <div className="flex items-center gap-2 mb-2">
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="h-5 w-20" />
+            </div>
+            <Skeleton className="h-3 w-40 mb-3" />
+            <div className="grid grid-cols-3 gap-3 pt-3 border-t border-border">
+              {[1, 2, 3].map((j) => (
+                <div key={j} className="space-y-1">
+                  <Skeleton className="h-3 w-12" />
+                  <Skeleton className="h-4 w-8" />
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  )
 }
 
 export default function SystemActivityCard() {
@@ -49,38 +82,36 @@ export default function SystemActivityCard() {
   }, [])
 
   if (loading) {
-    return (
-      <div className="card">
-        <h3 className="text-xl font-bold text-primary mb-4">System Activity</h3>
-        <div className="flex items-center justify-center py-8">
-          <div className="text-zinc-500">Loading activity...</div>
-        </div>
-      </div>
-    )
+    return <ActivitySkeleton />
   }
 
   if (error) {
     return (
-      <div className="card border-red-200 bg-red-50">
-        <h3 className="text-xl font-bold text-red-700 mb-4">System Activity</h3>
-        <div className="text-red-600 text-sm">
-          ⚠️ Error loading activity: {error}
-        </div>
-      </div>
+      <Card className="border-destructive/50 bg-destructive/5">
+        <CardHeader>
+          <CardTitle className="text-destructive">System Activity</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-destructive">Error loading activity: {error}</p>
+        </CardContent>
+      </Card>
     )
   }
 
   if (runs.length === 0) {
     return (
-      <div className="card">
-        <h3 className="text-xl font-bold text-primary mb-4">System Activity</h3>
-        <div className="text-center py-8">
-          <div className="text-zinc-400 text-lg">No ingestion runs yet</div>
-          <p className="text-zinc-500 text-sm mt-2">
-            Run your first ingestion to see activity
-          </p>
-        </div>
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>System Activity</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <EmptyState
+            icon={<ChartBarIcon />}
+            title="No ingestion runs yet"
+            description="Run your first ingestion to see activity logs and statistics."
+          />
+        </CardContent>
+      </Card>
     )
   }
 
@@ -101,102 +132,103 @@ export default function SystemActivityCard() {
     return `${Math.floor(seconds / 60)}m ${seconds % 60}s`
   }
 
-  const getStatusColor = (status: string) => {
+  const getStatusVariant = (status: string): 'default' | 'secondary' | 'destructive' | 'outline' => {
     switch (status) {
       case 'completed':
-        return 'bg-green-100 text-green-700 border-green-200'
+        return 'default'
       case 'running':
-        return 'bg-blue-100 text-blue-700 border-blue-200'
+        return 'secondary'
       case 'failed':
-        return 'bg-red-100 text-red-700 border-red-200'
+        return 'destructive'
       default:
-        return 'bg-zinc-100 text-zinc-700 border-zinc-200'
+        return 'outline'
     }
   }
 
   return (
-    <div className="card">
-      <h3 className="text-xl font-bold text-primary mb-6">System Activity</h3>
-
-      <div className="space-y-3">
-        {runs.map((run) => (
-          <div
-            key={run.id}
-            className="p-4 border border-zinc-200 rounded-lg hover:border-zinc-300 transition-colors"
-          >
-            <div className="flex justify-between items-start mb-3">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold text-zinc-800">
-                    {formatDate(run.startedAt.seconds)}
-                  </span>
-                  <span
-                    className={`text-xs px-2 py-0.5 rounded border ${getStatusColor(run.status)}`}
-                  >
-                    {run.status}
-                  </span>
-                </div>
-                <div className="text-xs text-zinc-500 mt-1">
-                  Trigger: {run.trigger} • Duration: {formatDuration(run.duration)}
+    <Card>
+      <CardHeader>
+        <CardTitle>System Activity</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-3">
+          {runs.map((run) => (
+            <div
+              key={run.id}
+              className="p-4 border border-border rounded-lg hover:border-border/80 hover:bg-muted/30 transition-all"
+            >
+              <div className="flex justify-between items-start mb-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-foreground">
+                      {formatDate(run.startedAt.seconds)}
+                    </span>
+                    <Badge variant={getStatusVariant(run.status)} className="text-xs">
+                      {run.status}
+                    </Badge>
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    Trigger: {run.trigger} • Duration: {formatDuration(run.duration)}
+                  </div>
                 </div>
               </div>
+
+              {run.stats && (
+                <div className="grid grid-cols-3 gap-3 mt-3 pt-3 border-t border-border">
+                  {run.stats.sourcesChecked !== undefined && (
+                    <div>
+                      <div className="text-xs text-muted-foreground">Sources</div>
+                      <div className="text-sm font-medium text-foreground tabular-nums">
+                        {run.stats.sourcesChecked}
+                        {run.stats.sourcesFailed ? (
+                          <span className="text-destructive text-xs ml-1">
+                            ({run.stats.sourcesFailed} failed)
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                  )}
+                  {run.stats.articlesIngested !== undefined && (
+                    <div>
+                      <div className="text-xs text-muted-foreground">Articles</div>
+                      <div className="text-sm font-medium text-foreground tabular-nums">
+                        {run.stats.articlesIngested}
+                        {run.stats.articlesDeduplicated ? (
+                          <span className="text-muted-foreground text-xs ml-1">
+                            (-{run.stats.articlesDeduplicated})
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                  )}
+                  {run.stats.briefsGenerated !== undefined && (
+                    <div>
+                      <div className="text-xs text-muted-foreground">Briefs</div>
+                      <div className="text-sm font-medium text-foreground tabular-nums">
+                        {run.stats.briefsGenerated}
+                      </div>
+                    </div>
+                  )}
+                  {run.stats.alertsTriggered !== undefined && run.stats.alertsTriggered > 0 && (
+                    <div>
+                      <div className="text-xs text-muted-foreground">Alerts</div>
+                      <div className="text-sm font-medium text-amber-600 dark:text-amber-400 tabular-nums">
+                        {run.stats.alertsTriggered}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
-
-            {run.stats && (
-              <div className="grid grid-cols-3 gap-3 mt-3 pt-3 border-t border-zinc-100">
-                {run.stats.sourcesChecked !== undefined && (
-                  <div>
-                    <div className="text-xs text-zinc-500">Sources</div>
-                    <div className="text-sm font-semibold text-zinc-700">
-                      {run.stats.sourcesChecked}
-                      {run.stats.sourcesFailed ? (
-                        <span className="text-red-500 text-xs ml-1">
-                          ({run.stats.sourcesFailed} failed)
-                        </span>
-                      ) : null}
-                    </div>
-                  </div>
-                )}
-                {run.stats.articlesIngested !== undefined && (
-                  <div>
-                    <div className="text-xs text-zinc-500">Articles</div>
-                    <div className="text-sm font-semibold text-zinc-700">
-                      {run.stats.articlesIngested}
-                      {run.stats.articlesDeduplicated ? (
-                        <span className="text-zinc-400 text-xs ml-1">
-                          (-{run.stats.articlesDeduplicated})
-                        </span>
-                      ) : null}
-                    </div>
-                  </div>
-                )}
-                {run.stats.briefsGenerated !== undefined && (
-                  <div>
-                    <div className="text-xs text-zinc-500">Briefs</div>
-                    <div className="text-sm font-semibold text-zinc-700">
-                      {run.stats.briefsGenerated}
-                    </div>
-                  </div>
-                )}
-                {run.stats.alertsTriggered !== undefined && run.stats.alertsTriggered > 0 && (
-                  <div>
-                    <div className="text-xs text-zinc-500">Alerts</div>
-                    <div className="text-sm font-semibold text-orange-600">
-                      {run.stats.alertsTriggered}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-
-      {runs.length >= 10 && (
-        <div className="text-center text-xs text-zinc-400 mt-4">
-          Showing most recent 10 runs
+          ))}
         </div>
-      )}
-    </div>
+
+        {runs.length >= 10 && (
+          <div className="text-center text-xs text-muted-foreground mt-4">
+            Showing most recent 10 runs
+          </div>
+        )}
+      </CardContent>
+    </Card>
   )
 }

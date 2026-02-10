@@ -2,6 +2,12 @@ import { useEffect, useState } from 'react'
 import { collection, query, orderBy, limit, getDocs, where } from 'firebase/firestore'
 import { db } from '../firebase'
 import { cleanSummary, extractHNLink } from '../utils/text'
+import { motion, AnimatePresence } from 'framer-motion'
+import { Card, CardContent } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Skeleton, SkeletonArticle } from '@/components/ui/skeleton'
+import { EmptyState, NewspaperIcon } from '@/components/EmptyState'
+import { getRelevanceColor, getCategoryColor } from '@/lib/design-tokens'
 
 interface Article {
   id: string
@@ -22,45 +28,29 @@ interface HNStory {
   title: string
   url?: string
   score: number
-  descendants: number // comment count
+  descendants: number
 }
 
-// Calculate trending score based on relevance + recency
 function calculateTrendingScore(article: Article): number {
   const now = new Date()
   const published = new Date(article.published_at)
   const hoursAgo = (now.getTime() - published.getTime()) / (1000 * 60 * 60)
-
-  // Recency boost: max 5 points for articles < 1 hour, decaying over 24 hours
   const recencyBoost = Math.max(0, 5 - (hoursAgo / 5))
-
-  // Base score from relevance
   const baseScore = article.relevance_score || 0
-
-  // HN points boost (normalized - every 100 points = 1 trending point)
   const hnBoost = article.hn_points ? Math.min(5, article.hn_points / 100) : 0
-
   return baseScore + recencyBoost + hnBoost
 }
 
-// Fetch HN top stories with scores
 async function fetchHNTopStories(): Promise<Map<string, HNStory>> {
   const urlToStory = new Map<string, HNStory>()
-
   try {
-    // Fetch top 50 story IDs
     const idsResponse = await fetch('https://hacker-news.firebaseio.com/v0/topstories.json')
     const ids: number[] = await idsResponse.json()
-
-    // Fetch details for top 30 stories
     const storyPromises = ids.slice(0, 30).map(async (id) => {
       const res = await fetch(`https://hacker-news.firebaseio.com/v0/item/${id}.json`)
       return res.json() as Promise<HNStory>
     })
-
     const stories = await Promise.all(storyPromises)
-
-    // Index by URL for matching
     stories.forEach(story => {
       if (story && story.url) {
         urlToStory.set(story.url, story)
@@ -69,23 +59,21 @@ async function fetchHNTopStories(): Promise<Map<string, HNStory>> {
   } catch (err) {
     console.error('Failed to fetch HN stories:', err)
   }
-
   return urlToStory
 }
 
-// Category config with colors
 const CATEGORIES = [
-  { id: 'all', name: 'All', color: 'bg-zinc-100 text-zinc-800' },
-  { id: 'tech', name: 'Tech', color: 'bg-blue-100 text-blue-800' },
-  { id: 'hn-popular', name: 'HN Blogs', color: 'bg-orange-100 text-orange-800' },
-  { id: 'saas_dev', name: 'SaaS/Dev', color: 'bg-purple-100 text-purple-800' },
-  { id: 'engineering', name: 'Engineering', color: 'bg-green-100 text-green-800' },
-  { id: 'infrastructure', name: 'Infrastructure', color: 'bg-cyan-100 text-cyan-800' },
-  { id: 'science', name: 'Science', color: 'bg-indigo-100 text-indigo-800' },
-  { id: 'crypto', name: 'Crypto', color: 'bg-yellow-100 text-yellow-800' },
-  { id: 'sports', name: 'Sports', color: 'bg-red-100 text-red-800' },
-  { id: 'automotive', name: 'Auto', color: 'bg-slate-100 text-slate-800' },
-  { id: 'world', name: 'World', color: 'bg-emerald-100 text-emerald-800' },
+  { id: 'all', name: 'All' },
+  { id: 'tech', name: 'Tech' },
+  { id: 'hn-popular', name: 'HN Blogs' },
+  { id: 'saas_dev', name: 'SaaS/Dev' },
+  { id: 'engineering', name: 'Engineering' },
+  { id: 'infrastructure', name: 'Infrastructure' },
+  { id: 'science', name: 'Science' },
+  { id: 'crypto', name: 'Crypto' },
+  { id: 'sports', name: 'Sports' },
+  { id: 'automotive', name: 'Auto' },
+  { id: 'world', name: 'World' },
 ]
 
 // Trending section component
@@ -96,7 +84,6 @@ function TrendingSection({
   articles: Article[]
   onArticleClick: (url: string) => void
 }) {
-  // Group by category and get top 3 per category
   const trendingByCategory = articles.reduce((acc, article) => {
     const cat = article.category || 'other'
     if (!acc[cat]) acc[cat] = []
@@ -104,14 +91,12 @@ function TrendingSection({
     return acc
   }, {} as Record<string, Article[]>)
 
-  // Sort each category by trending score and take top 3
   Object.keys(trendingByCategory).forEach(cat => {
     trendingByCategory[cat] = trendingByCategory[cat]
       .sort((a, b) => (b.trending_score || 0) - (a.trending_score || 0))
       .slice(0, 3)
   })
 
-  // Get categories with trending articles, sorted by highest trending score
   const sortedCategories = Object.entries(trendingByCategory)
     .filter(([_, articles]) => articles.length > 0)
     .sort((a, b) => {
@@ -119,20 +104,7 @@ function TrendingSection({
       const maxB = Math.max(...b[1].map(x => x.trending_score || 0))
       return maxB - maxA
     })
-    .slice(0, 4) // Show top 4 categories
-
-  const categoryColors: Record<string, string> = {
-    'tech': 'border-blue-500 bg-blue-50',
-    'hn-popular': 'border-orange-500 bg-orange-50',
-    'saas_dev': 'border-purple-500 bg-purple-50',
-    'engineering': 'border-green-500 bg-green-50',
-    'infrastructure': 'border-cyan-500 bg-cyan-50',
-    'science': 'border-indigo-500 bg-indigo-50',
-    'crypto': 'border-yellow-500 bg-yellow-50',
-    'sports': 'border-red-500 bg-red-50',
-    'automotive': 'border-slate-500 bg-slate-50',
-    'world': 'border-emerald-500 bg-emerald-50',
-  }
+    .slice(0, 4)
 
   const categoryNames: Record<string, string> = {
     'tech': 'Tech',
@@ -150,60 +122,72 @@ function TrendingSection({
   if (sortedCategories.length === 0) return null
 
   return (
-    <div className="mb-8">
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="mb-8"
+    >
       <div className="flex items-center gap-2 mb-4">
         <span className="text-xl">🔥</span>
-        <h2 className="text-lg font-bold text-zinc-900">Trending Now</h2>
+        <h2 className="text-lg font-semibold text-foreground">Trending Now</h2>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {sortedCategories.map(([category, categoryArticles]) => (
-          <div
+        {sortedCategories.map(([category, categoryArticles], idx) => (
+          <motion.div
             key={category}
-            className={`rounded-lg border-l-4 p-4 ${categoryColors[category] || 'border-zinc-500 bg-zinc-50'}`}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: idx * 0.05 }}
           >
-            <h3 className="font-semibold text-zinc-700 text-sm mb-3">
-              {categoryNames[category] || category}
-            </h3>
-            <div className="space-y-3">
-              {categoryArticles.map((article, idx) => (
-                <a
-                  key={article.id}
-                  href={article.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(e) => {
-                    e.preventDefault()
-                    onArticleClick(article.url)
-                    window.open(article.url, '_blank')
-                  }}
-                  className="block group"
-                >
-                  <div className="flex items-start gap-2">
-                    <span className="text-zinc-400 text-sm font-medium w-4">{idx + 1}</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-zinc-800 group-hover:text-blue-600 line-clamp-2 leading-snug">
-                        {article.title}
-                      </p>
-                      <div className="flex items-center gap-2 mt-1">
-                        {article.hn_points && (
-                          <span className="text-xs text-orange-600 font-medium">
-                            ▲ {article.hn_points}
-                          </span>
-                        )}
-                        <span className="text-xs text-zinc-400">
-                          {Math.round(article.trending_score || 0)} pts
+            <Card className="h-full border-l-4 border-l-primary/50">
+              <CardContent className="p-4">
+                <h3 className="font-medium text-muted-foreground text-sm mb-3">
+                  {categoryNames[category] || category}
+                </h3>
+                <div className="space-y-3">
+                  {categoryArticles.map((article, articleIdx) => (
+                    <a
+                      key={article.id}
+                      href={article.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => {
+                        e.preventDefault()
+                        onArticleClick(article.url)
+                        window.open(article.url, '_blank')
+                      }}
+                      className="block group"
+                    >
+                      <div className="flex items-start gap-2">
+                        <span className="text-muted-foreground text-sm font-medium w-4 tabular-nums">
+                          {articleIdx + 1}
                         </span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-foreground group-hover:text-primary line-clamp-2 leading-snug transition-colors">
+                            {article.title}
+                          </p>
+                          <div className="flex items-center gap-2 mt-1">
+                            {article.hn_points && (
+                              <span className="text-xs text-orange-500 dark:text-orange-400 font-medium tabular-nums">
+                                ▲ {article.hn_points}
+                              </span>
+                            )}
+                            <span className="text-xs text-muted-foreground tabular-nums">
+                              {Math.round(article.trending_score || 0)} pts
+                            </span>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  </div>
-                </a>
-              ))}
-            </div>
-          </div>
+                    </a>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
         ))}
       </div>
-    </div>
+    </motion.div>
   )
 }
 
@@ -226,17 +210,14 @@ function ArticleCard({ article, expanded, onToggle }: {
   expanded: boolean
   onToggle: () => void
 }) {
-  const category = CATEGORIES.find(c => c.id === article.category) || CATEGORIES[0]
-
   return (
-    <div className="border-b border-zinc-100 py-4 last:border-0">
+    <motion.div
+      layout
+      className="border-b border-border py-4 last:border-0"
+    >
       <div className="flex items-start gap-3">
         {/* Score indicator */}
-        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
-          article.relevance_score >= 8 ? 'bg-green-100 text-green-700' :
-          article.relevance_score >= 6 ? 'bg-blue-100 text-blue-700' :
-          'bg-zinc-100 text-zinc-600'
-        }`}>
+        <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-semibold shrink-0 ${getRelevanceColor(article.relevance_score)}`}>
           {article.relevance_score}
         </div>
 
@@ -246,105 +227,125 @@ function ArticleCard({ article, expanded, onToggle }: {
             onClick={onToggle}
             className="text-left w-full group"
           >
-            <h3 className="font-medium text-zinc-900 group-hover:text-blue-600 transition-colors leading-snug">
+            <h3 className="font-medium text-foreground group-hover:text-primary transition-colors leading-snug">
               {article.title}
             </h3>
           </button>
 
-          {/* Source - prominent */}
-          <div className="flex items-center gap-2 mt-1">
-            <span className="text-sm font-semibold text-zinc-700">
+          {/* Source */}
+          <div className="flex items-center gap-2 mt-1.5">
+            <span className="text-sm font-medium text-foreground">
               {article.source_name || article.source_id}
             </span>
-            <span className="text-zinc-300">|</span>
-            <span className="text-sm text-zinc-400">{formatTimeAgo(article.published_at)}</span>
+            <span className="text-muted-foreground/50">·</span>
+            <span className="text-sm text-muted-foreground">{formatTimeAgo(article.published_at)}</span>
           </div>
 
           {/* Meta row */}
-          <div className="flex items-center gap-2 mt-1 text-sm flex-wrap">
-            <span className={`px-2 py-0.5 rounded text-xs font-medium ${category.color}`}>
-              {category.name}
-            </span>
+          <div className="flex items-center gap-2 mt-2 flex-wrap">
+            <Badge variant="secondary" className={getCategoryColor(article.category)}>
+              {CATEGORIES.find(c => c.id === article.category)?.name || article.category}
+            </Badge>
             {article.hn_points && (
-              <>
-                <span className="text-zinc-400">•</span>
-                <span className="text-orange-500 font-medium text-xs">▲ {article.hn_points} on HN</span>
-              </>
+              <Badge variant="outline" className="text-orange-500 dark:text-orange-400 border-orange-200 dark:border-orange-800">
+                ▲ {article.hn_points} on HN
+              </Badge>
             )}
           </div>
 
           {/* Expanded content */}
-          {expanded && (
-            <div className="mt-3 space-y-3">
-              {article.summary && cleanSummary(article.summary) && (
-                <p className="text-zinc-600 text-sm leading-relaxed bg-zinc-50 p-3 rounded-lg">
-                  {cleanSummary(article.summary)}
-                </p>
-              )}
-              <div className="flex items-center gap-4">
-                <a
-                  href={article.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800 font-medium"
-                >
-                  Read full article
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                  </svg>
-                </a>
-                {extractHNLink(article.summary || '') && (
-                  <a
-                    href={extractHNLink(article.summary || '')!}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-sm text-orange-500 hover:text-orange-700 font-medium"
-                  >
-                    HN Discussion
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                    </svg>
-                  </a>
-                )}
-              </div>
-            </div>
-          )}
+          <AnimatePresence>
+            {expanded && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.15 }}
+                className="overflow-hidden"
+              >
+                <div className="mt-4 space-y-3">
+                  {article.summary && cleanSummary(article.summary) && (
+                    <p className="text-muted-foreground text-sm leading-relaxed bg-muted/50 p-3 rounded-lg">
+                      {cleanSummary(article.summary)}
+                    </p>
+                  )}
+                  <div className="flex items-center gap-4">
+                    <a
+                      href={article.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-sm text-primary hover:text-primary/80 font-medium transition-colors"
+                    >
+                      Read full article
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                      </svg>
+                    </a>
+                    {extractHNLink(article.summary || '') && (
+                      <a
+                        href={extractHNLink(article.summary || '')!}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-sm text-orange-500 hover:text-orange-600 dark:text-orange-400 dark:hover:text-orange-300 font-medium transition-colors"
+                      >
+                        HN Discussion
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                        </svg>
+                      </a>
+                    )}
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
         {/* Expand indicator */}
         <button
           onClick={onToggle}
-          className="p-1 text-zinc-400 hover:text-zinc-600 flex-shrink-0"
+          className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors shrink-0"
+          aria-label={expanded ? 'Collapse' : 'Expand'}
         >
-          <svg
-            className={`w-5 h-5 transition-transform ${expanded ? 'rotate-180' : ''}`}
+          <motion.svg
+            animate={{ rotate: expanded ? 180 : 0 }}
+            transition={{ duration: 0.15 }}
+            className="w-5 h-5"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
           >
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
+          </motion.svg>
         </button>
       </div>
+    </motion.div>
+  )
+}
+
+function ArticlesSkeleton() {
+  return (
+    <div className="space-y-4">
+      {[1, 2, 3, 4, 5].map((i) => (
+        <SkeletonArticle key={i} />
+      ))}
     </div>
   )
 }
 
 export default function Articles() {
   const [articles, setArticles] = useState<Article[]>([])
-  const [allArticles, setAllArticles] = useState<Article[]>([]) // For trending (unfiltered)
+  const [allArticles, setAllArticles] = useState<Article[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedCategory, setSelectedCategory] = useState('all')
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [hnStories, setHnStories] = useState<Map<string, HNStory>>(new Map())
 
-  // Fetch HN stories on mount
   useEffect(() => {
     fetchHNTopStories().then(setHnStories)
   }, [])
 
-  // Fetch all articles for trending (once)
   useEffect(() => {
     const fetchAllArticles = async () => {
       try {
@@ -368,7 +369,6 @@ export default function Articles() {
     fetchAllArticles()
   }, [])
 
-  // Calculate trending scores when HN data or articles change
   const articlesWithTrending = allArticles.map(article => {
     const hnStory = hnStories.get(article.url)
     const articleWithHN = {
@@ -412,16 +412,11 @@ export default function Articles() {
         snapshot.forEach((doc) => {
           const data = doc.data()
           const article = { id: doc.id, ...data } as Article
-
-          // Add HN points if available
           const hnStory = hnStories.get(article.url)
           if (hnStory) {
             article.hn_points = hnStory.score
           }
-
-          // Calculate trending score
           article.trending_score = calculateTrendingScore(article)
-
           fetchedArticles.push(article)
         })
 
@@ -437,7 +432,6 @@ export default function Articles() {
     fetchArticles()
   }, [selectedCategory, hnStories])
 
-  // Group articles by category for display
   const groupedArticles = articles.reduce((acc, article) => {
     const cat = article.category || 'other'
     if (!acc[cat]) acc[cat] = []
@@ -446,14 +440,24 @@ export default function Articles() {
   }, {} as Record<string, Article[]>)
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8">
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      className="max-w-4xl mx-auto px-4 py-8"
+    >
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-zinc-900">News Feed</h1>
-        <p className="text-zinc-500 mt-1">
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="mb-8"
+      >
+        <h1 className="text-2xl sm:text-3xl font-semibold text-foreground tracking-tight">
+          News Feed
+        </h1>
+        <p className="text-muted-foreground mt-1 tabular-nums">
           {articles.length} articles from {Object.keys(groupedArticles).length} categories
         </p>
-      </div>
+      </motion.div>
 
       {/* Trending Section */}
       {!loading && articlesWithTrending.length > 0 && (
@@ -464,39 +468,41 @@ export default function Articles() {
       )}
 
       {/* Category filters */}
-      <div className="sticky top-0 bg-white py-3 z-10 border-b border-zinc-100 mb-6">
+      <div className="sticky top-16 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 py-3 z-10 border-b border-border mb-6 -mx-4 px-4">
         {/* Featured: HN Popular Blogs */}
         <div className="flex items-center gap-3 mb-3">
           <button
             onClick={() => setSelectedCategory('hn-popular')}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 active:scale-[0.98] ${
               selectedCategory === 'hn-popular'
                 ? 'bg-orange-500 text-white shadow-md'
-                : 'bg-orange-100 text-orange-700 hover:bg-orange-200 border border-orange-200'
+                : 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 hover:bg-orange-200 dark:hover:bg-orange-900/50 border border-orange-200 dark:border-orange-800'
             }`}
           >
             <span className="text-lg">🔥</span>
             HN Popular Blogs
             <span className="text-xs opacity-75">(92 sources)</span>
           </button>
-          <span className="text-xs text-zinc-400">Curated tech blogs from Hacker News favorites</span>
+          <span className="text-xs text-muted-foreground hidden sm:inline">
+            Curated tech blogs from Hacker News favorites
+          </span>
         </div>
 
-        {/* Other categories */}
+        {/* Other categories with animated underline */}
         <div className="flex flex-wrap gap-2">
           {CATEGORIES.filter(cat => cat.id !== 'hn-popular').map((cat) => (
             <button
               key={cat.id}
               onClick={() => setSelectedCategory(cat.id)}
-              className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
+              className={`relative px-3 py-1.5 rounded-full text-sm font-medium transition-all active:scale-[0.98] ${
                 selectedCategory === cat.id
-                  ? 'bg-zinc-900 text-white'
-                  : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground'
               }`}
             >
               {cat.name}
               {selectedCategory === cat.id && articles.length > 0 && (
-                <span className="ml-1.5 text-zinc-400">({articles.length})</span>
+                <span className="ml-1.5 opacity-70 tabular-nums">({articles.length})</span>
               )}
             </button>
           ))}
@@ -504,52 +510,60 @@ export default function Articles() {
       </div>
 
       {/* Loading state */}
-      {loading && (
-        <div className="flex items-center justify-center py-12">
-          <div className="text-zinc-500">Loading articles...</div>
-        </div>
-      )}
+      {loading && <ArticlesSkeleton />}
 
       {/* Error state */}
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-          <p className="text-red-700">Error: {error}</p>
-        </div>
+        <Card className="border-destructive/50 bg-destructive/5">
+          <CardContent className="p-4">
+            <p className="text-destructive">Error: {error}</p>
+          </CardContent>
+        </Card>
       )}
 
       {/* Empty state */}
       {!loading && !error && articles.length === 0 && (
-        <div className="text-center py-12">
-          <div className="text-zinc-400 text-lg">No articles found</div>
-          <p className="text-zinc-500 text-sm mt-2">
-            {selectedCategory === 'all'
+        <EmptyState
+          icon={<NewspaperIcon />}
+          title="No articles found"
+          description={
+            selectedCategory === 'all'
               ? 'Run ingestion to fetch articles from your sources'
               : `No articles in ${selectedCategory} category`
-            }
-          </p>
-        </div>
+          }
+        />
       )}
 
       {/* Articles list */}
       {!loading && !error && articles.length > 0 && (
-        <div className="bg-white rounded-lg border border-zinc-200">
-          {articles.map((article) => (
-            <ArticleCard
-              key={article.id}
-              article={article}
-              expanded={expandedId === article.id}
-              onToggle={() => setExpandedId(expandedId === article.id ? null : article.id)}
-            />
-          ))}
-        </div>
+        <Card>
+          <CardContent className="p-0 divide-y divide-border">
+            <div className="p-4">
+              {articles.map((article, idx) => (
+                <motion.div
+                  key={article.id}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: Math.min(idx * 0.02, 0.3) }}
+                >
+                  <ArticleCard
+                    article={article}
+                    expanded={expandedId === article.id}
+                    onToggle={() => setExpandedId(expandedId === article.id ? null : article.id)}
+                  />
+                </motion.div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* Load more hint */}
       {!loading && articles.length >= 100 && (
-        <div className="text-center py-4 text-zinc-400 text-sm">
+        <div className="text-center py-4 text-muted-foreground text-sm">
           Showing first 100 articles
         </div>
       )}
-    </div>
+    </motion.div>
   )
 }

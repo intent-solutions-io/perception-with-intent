@@ -7,7 +7,6 @@ import {
   getDocs,
   startAfter,
   where,
-  Timestamp,
   QueryDocumentSnapshot,
   DocumentData,
   QueryConstraint
@@ -16,12 +15,35 @@ import { db } from '../firebase'
 import { Author } from '../types/author'
 import AuthorRow from '../components/AuthorRow'
 import FooterBranding from '../components/FooterBranding'
+import { motion } from 'framer-motion'
+import { Card, CardContent } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
+import { SkeletonList } from '@/components/ui/skeleton'
+import { EmptyState, UserGroupIcon } from '@/components/EmptyState'
 
 const PAGE_SIZE = 20
-const FILTERED_PAGE_SIZE = 100 // Load more when client-side filters active
+const FILTERED_PAGE_SIZE = 100
 
 type StatusFilter = 'all' | 'active' | 'inactive' | 'error'
 type RecencyFilter = 'all' | '7d' | '30d' | '90d'
+
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: { staggerChildren: 0.05 },
+  },
+}
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 8 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.15, ease: 'easeOut' as const },
+  },
+}
 
 export default function Authors() {
   const [authors, setAuthors] = useState<Author[]>([])
@@ -38,10 +60,8 @@ export default function Authors() {
   const [recencyFilter, setRecencyFilter] = useState<RecencyFilter>('all')
   const [categoryFilter, setCategoryFilter] = useState<string>('all')
 
-  // Track if we need to refetch due to filter changes
   const prevStatusFilter = useRef(statusFilter)
 
-  // Debounce search term
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(searchTerm)
@@ -49,7 +69,6 @@ export default function Authors() {
     return () => clearTimeout(timer)
   }, [searchTerm])
 
-  // Extract unique categories from all authors
   const availableCategories = useMemo(() => {
     const categories = new Set<string>()
     authors.forEach((author) => {
@@ -58,22 +77,18 @@ export default function Authors() {
     return Array.from(categories).sort()
   }, [authors])
 
-  // Check if client-side filters are active (these don't work well with pagination)
   const hasClientSideFilters = debouncedSearch || categoryFilter !== 'all' || recencyFilter !== 'all'
 
-  // Build Firestore query with server-side filters
   const buildQuery = useCallback((startAfterDoc?: QueryDocumentSnapshot<DocumentData>) => {
     const authorsRef = collection(db, 'authors')
     const constraints: QueryConstraint[] = [
       orderBy('lastPublished', 'desc')
     ]
 
-    // Server-side filter: status
     if (statusFilter !== 'all') {
       constraints.push(where('status', '==', statusFilter))
     }
 
-    // Use larger page size when client-side filters are active
     const pageSize = hasClientSideFilters ? FILTERED_PAGE_SIZE : PAGE_SIZE
     constraints.push(limit(pageSize))
 
@@ -84,7 +99,6 @@ export default function Authors() {
     return query(authorsRef, ...constraints)
   }, [statusFilter, hasClientSideFilters])
 
-  // Fetch authors (initial or after filter change)
   const fetchAuthors = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -113,12 +127,10 @@ export default function Authors() {
     }
   }, [buildQuery, hasClientSideFilters])
 
-  // Initial fetch and refetch when server-side filters change
   useEffect(() => {
     fetchAuthors()
-  }, [statusFilter]) // Only refetch for server-side filter changes
+  }, [statusFilter])
 
-  // Reset when status filter changes
   useEffect(() => {
     if (prevStatusFilter.current !== statusFilter) {
       setAuthors([])
@@ -128,7 +140,6 @@ export default function Authors() {
     }
   }, [statusFilter])
 
-  // Load more
   const loadMore = useCallback(async () => {
     if (!lastDoc || loadingMore || !hasMore) return
 
@@ -156,7 +167,6 @@ export default function Authors() {
     }
   }, [lastDoc, loadingMore, hasMore, buildQuery, hasClientSideFilters])
 
-  // Infinite scroll handler
   useEffect(() => {
     const handleScroll = () => {
       if (
@@ -171,10 +181,8 @@ export default function Authors() {
     return () => window.removeEventListener('scroll', handleScroll)
   }, [loadMore])
 
-  // Apply client-side filters
   const filteredAuthors = useMemo(() => {
     return authors.filter((author) => {
-      // Search filter (client-side)
       if (debouncedSearch) {
         const searchLower = debouncedSearch.toLowerCase()
         const matchesName = author.name.toLowerCase().includes(searchLower)
@@ -187,12 +195,10 @@ export default function Authors() {
         }
       }
 
-      // Category filter (client-side)
       if (categoryFilter !== 'all' && !author.categories.includes(categoryFilter)) {
         return false
       }
 
-      // Recency filter (client-side)
       if (recencyFilter !== 'all') {
         const now = new Date()
         const lastPublished = author.lastPublished?.toDate() || new Date(0)
@@ -226,170 +232,191 @@ export default function Authors() {
 
   if (loading) {
     return (
-      <div className="space-y-6">
-        <div className="flex justify-between items-center">
-          <div>
-            <h2 className="text-3xl font-bold text-primary">Authors</h2>
-            <p className="text-zinc-600 mt-1">Browse content creators sorted by recent activity</p>
-          </div>
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-semibold text-foreground tracking-tight">
+            Authors
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            Browse content creators sorted by recent activity
+          </p>
         </div>
-
-        <div className="flex items-center justify-center py-12">
-          <div className="text-zinc-500">Loading authors...</div>
-        </div>
+        <Card>
+          <CardContent className="p-6">
+            <SkeletonList count={10} />
+          </CardContent>
+        </Card>
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="space-y-6">
-        <div className="flex justify-between items-center">
-          <div>
-            <h2 className="text-3xl font-bold text-primary">Authors</h2>
-            <p className="text-zinc-600 mt-1">Browse content creators sorted by recent activity</p>
-          </div>
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-semibold text-foreground tracking-tight">
+            Authors
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            Browse content creators sorted by recent activity
+          </p>
         </div>
-
-        <div className="bg-red-50 border border-red-200 rounded-lg p-6">
-          <div className="text-red-700 font-medium">Error loading authors</div>
-          <div className="text-red-600 text-sm mt-1">{error}</div>
-        </div>
+        <Card className="border-destructive/50 bg-destructive/5">
+          <CardContent className="p-6">
+            <p className="text-destructive font-medium">Error loading authors</p>
+            <p className="text-destructive/80 text-sm mt-1">{error}</p>
+          </CardContent>
+        </Card>
       </div>
     )
   }
 
   return (
-    <div className="space-y-6">
+    <motion.div
+      initial="hidden"
+      animate="visible"
+      variants={containerVariants}
+      className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6"
+    >
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-4">
+      <motion.div variants={itemVariants} className="flex flex-col md:flex-row md:justify-between md:items-start gap-4">
         <div>
-          <h2 className="text-3xl font-bold text-primary">Authors</h2>
-          <p className="text-zinc-600 mt-1">
+          <h1 className="text-2xl sm:text-3xl font-semibold text-foreground tracking-tight">
+            Authors
+          </h1>
+          <p className="text-muted-foreground mt-1 tabular-nums">
             {filteredAuthors.length} of {authors.length} authors
             {hasActiveFilters && ' (filtered)'}
           </p>
         </div>
-      </div>
+      </motion.div>
 
       {/* Filters */}
-      <div className="bg-white border border-zinc-200 rounded-lg p-4">
-        <div className="flex flex-col lg:flex-row gap-4">
-          {/* Search */}
-          <div className="flex-1">
-            <input
-              type="text"
-              placeholder="Search by name, category, or bio..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full px-4 py-2 border border-zinc-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-            />
-          </div>
+      <motion.div variants={itemVariants}>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex flex-col lg:flex-row gap-4">
+              {/* Search */}
+              <div className="flex-1">
+                <Input
+                  type="text"
+                  placeholder="Search by name, category, or bio..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
 
-          {/* Status Filter */}
-          <div className="w-full lg:w-40">
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-              className="w-full px-4 py-2 border border-zinc-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-white"
-            >
-              <option value="all">All Status</option>
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-              <option value="error">Error</option>
-            </select>
-          </div>
+              {/* Status Filter */}
+              <div className="w-full lg:w-40">
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                >
+                  <option value="all">All Status</option>
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                  <option value="error">Error</option>
+                </select>
+              </div>
 
-          {/* Recency Filter */}
-          <div className="w-full lg:w-40">
-            <select
-              value={recencyFilter}
-              onChange={(e) => setRecencyFilter(e.target.value as RecencyFilter)}
-              className="w-full px-4 py-2 border border-zinc-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-white"
-            >
-              <option value="all">Any Time</option>
-              <option value="7d">Last 7 days</option>
-              <option value="30d">Last 30 days</option>
-              <option value="90d">Last 90 days</option>
-            </select>
-          </div>
+              {/* Recency Filter */}
+              <div className="w-full lg:w-40">
+                <select
+                  value={recencyFilter}
+                  onChange={(e) => setRecencyFilter(e.target.value as RecencyFilter)}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                >
+                  <option value="all">Any Time</option>
+                  <option value="7d">Last 7 days</option>
+                  <option value="30d">Last 30 days</option>
+                  <option value="90d">Last 90 days</option>
+                </select>
+              </div>
 
-          {/* Category Filter */}
-          <div className="w-full lg:w-48">
-            <select
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              className="w-full px-4 py-2 border border-zinc-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-white"
-            >
-              <option value="all">All Categories</option>
-              {availableCategories.map((category) => (
-                <option key={category} value={category}>
-                  {category}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
+              {/* Category Filter */}
+              <div className="w-full lg:w-48">
+                <select
+                  value={categoryFilter}
+                  onChange={(e) => setCategoryFilter(e.target.value)}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                >
+                  <option value="all">All Categories</option>
+                  {availableCategories.map((category) => (
+                    <option key={category} value={category}>
+                      {category}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
 
-        {/* Clear Filters */}
-        {hasActiveFilters && (
-          <div className="mt-3 pt-3 border-t border-zinc-100">
-            <button
-              onClick={clearFilters}
-              className="text-sm text-primary hover:underline"
-            >
-              Clear all filters
-            </button>
-          </div>
-        )}
-      </div>
+            {/* Clear Filters */}
+            {hasActiveFilters && (
+              <div className="mt-3 pt-3 border-t border-border">
+                <Button variant="ghost" size="sm" onClick={clearFilters}>
+                  Clear all filters
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </motion.div>
 
       {/* Authors List */}
       {filteredAuthors.length === 0 ? (
-        <div className="text-center py-12">
-          {hasActiveFilters ? (
-            <>
-              <div className="text-zinc-400 text-lg">No authors match your filters</div>
-              <button
-                onClick={clearFilters}
-                className="text-primary hover:underline mt-2"
-              >
-                Clear filters
-              </button>
-            </>
-          ) : (
-            <>
-              <div className="text-zinc-400 text-lg">No authors yet</div>
-              <p className="text-zinc-500 text-sm mt-2">
-                Authors are discovered when articles are fetched during ingestion
-              </p>
-            </>
-          )}
-        </div>
+        <motion.div variants={itemVariants}>
+          <Card>
+            <CardContent className="p-6">
+              <EmptyState
+                icon={<UserGroupIcon />}
+                title={hasActiveFilters ? 'No authors match your filters' : 'No authors yet'}
+                description={
+                  hasActiveFilters
+                    ? 'Try adjusting your search or filter criteria'
+                    : 'Authors are discovered when articles are fetched during ingestion'
+                }
+                action={hasActiveFilters ? { label: 'Clear filters', onClick: clearFilters } : undefined}
+              />
+            </CardContent>
+          </Card>
+        </motion.div>
       ) : (
-        <div className="space-y-4">
-          {filteredAuthors.map((author) => (
-            <AuthorRow key={author.id} author={author} />
+        <motion.div variants={containerVariants} className="space-y-3">
+          {filteredAuthors.map((author, idx) => (
+            <motion.div
+              key={author.id}
+              variants={itemVariants}
+              custom={idx}
+            >
+              <AuthorRow author={author} />
+            </motion.div>
           ))}
-        </div>
+        </motion.div>
       )}
 
       {/* Loading more indicator */}
       {loadingMore && (
         <div className="text-center py-4">
-          <div className="text-zinc-500">Loading more...</div>
+          <div className="inline-flex items-center gap-2 text-muted-foreground">
+            <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            Loading more...
+          </div>
         </div>
       )}
 
       {/* End of list */}
       {!hasMore && authors.length > 0 && !hasActiveFilters && (
-        <div className="text-center py-4 text-zinc-400 text-sm">
+        <div className="text-center py-4 text-muted-foreground text-sm">
           End of list
         </div>
       )}
 
       {/* Footer */}
       <FooterBranding />
-    </div>
+    </motion.div>
   )
 }

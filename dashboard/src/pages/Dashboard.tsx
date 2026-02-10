@@ -1,4 +1,7 @@
 import { useState } from 'react'
+import { motion } from 'framer-motion'
+import { toast } from 'sonner'
+import { Button } from '@/components/ui/button'
 import TodayBriefCard from '../components/TodayBriefCard'
 import TopicWatchlistCard from '../components/TopicWatchlistCard'
 import SourceHealthCard from '../components/SourceHealthCard'
@@ -9,16 +12,36 @@ import FooterBranding from '../components/FooterBranding'
 
 const MCP_URL = 'https://perception-mcp-w53xszfqnq-uc.a.run.app'
 
+// Stagger animation variants for cards
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.08,
+    },
+  },
+}
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 12 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      duration: 0.2,
+      ease: 'easeOut' as const,
+    },
+  },
+}
+
 export default function Dashboard() {
   const [ingesting, setIngesting] = useState(false)
-  const [ingestionResult, setIngestionResult] = useState<string | null>(null)
 
   const handleRunIngestion = async () => {
     setIngesting(true)
-    setIngestionResult(null)
 
     try {
-      // Call MCP to fetch a sample feed
       const response = await fetch(`${MCP_URL}/mcp/tools/fetch_rss_feed`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -28,62 +51,94 @@ export default function Dashboard() {
       if (response.ok) {
         const data = await response.json()
         const articleCount = data.articles?.length || 0
-        setIngestionResult(`✓ Fetched ${articleCount} articles from HackerNews`)
+        toast.success(`Fetched ${articleCount} articles from HackerNews`, {
+          description: 'Ingestion completed successfully',
+        })
       } else {
-        setIngestionResult('⚠ Ingestion service unavailable')
+        toast.warning('Ingestion service unavailable', {
+          description: 'The MCP service may be restarting. Try again in a moment.',
+        })
       }
-    } catch (error) {
-      setIngestionResult('⚠ Failed to connect to ingestion service')
+    } catch {
+      toast.error('Failed to connect to ingestion service', {
+        description: 'Check your network connection and try again.',
+      })
     } finally {
       setIngesting(false)
     }
   }
 
   return (
-    <div className="space-y-6">
+    <motion.div
+      initial="hidden"
+      animate="visible"
+      variants={containerVariants}
+      className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6"
+    >
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <motion.div variants={itemVariants} className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
         <div>
-          <h2 className="text-3xl font-bold text-primary">Dashboard</h2>
-          <p className="text-zinc-600 mt-1">Your news intelligence command center</p>
+          <h1 className="text-2xl sm:text-3xl font-semibold text-foreground tracking-tight">
+            Dashboard
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            Your news intelligence command center
+          </p>
         </div>
-        <div className="flex items-center gap-3">
-          {ingestionResult && (
-            <span className={`text-sm ${ingestionResult.startsWith('✓') ? 'text-green-600' : 'text-amber-600'}`}>
-              {ingestionResult}
-            </span>
+        <Button
+          onClick={handleRunIngestion}
+          disabled={ingesting}
+          className="w-full sm:w-auto"
+        >
+          {ingesting ? (
+            <>
+              <svg className="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Running...
+            </>
+          ) : (
+            'Run Ingestion'
           )}
-          <button
-            onClick={handleRunIngestion}
-            disabled={ingesting}
-            className="btn-primary disabled:opacity-50"
-          >
-            {ingesting ? 'Running...' : 'Run Ingestion'}
-          </button>
-        </div>
-      </div>
+        </Button>
+      </motion.div>
 
       {/* Today's Brief - Full Width */}
-      <TodayBriefCard />
+      <motion.div variants={itemVariants}>
+        <TodayBriefCard />
+      </motion.div>
 
       {/* Two Column Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Left Column */}
-        <div className="space-y-6">
-          <AuthorsCard />
-          <TopicWatchlistCard />
-          <AlertsCard />
-        </div>
+        <motion.div variants={containerVariants} className="space-y-6">
+          <motion.div variants={itemVariants}>
+            <AuthorsCard />
+          </motion.div>
+          <motion.div variants={itemVariants}>
+            <TopicWatchlistCard />
+          </motion.div>
+          <motion.div variants={itemVariants}>
+            <AlertsCard />
+          </motion.div>
+        </motion.div>
 
         {/* Right Column */}
-        <div className="space-y-6">
-          <SourceHealthCard />
-          <SystemActivityCard />
-        </div>
+        <motion.div variants={containerVariants} className="space-y-6">
+          <motion.div variants={itemVariants}>
+            <SourceHealthCard />
+          </motion.div>
+          <motion.div variants={itemVariants}>
+            <SystemActivityCard />
+          </motion.div>
+        </motion.div>
       </div>
 
       {/* Footer */}
-      <FooterBranding />
-    </div>
+      <motion.div variants={itemVariants}>
+        <FooterBranding />
+      </motion.div>
+    </motion.div>
   )
 }
