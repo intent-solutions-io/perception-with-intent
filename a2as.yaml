@@ -1,0 +1,643 @@
+manifest:
+  version: "0.1.3"
+  schema: https://a2as.org/cert/schema
+  subject:
+    name: intent-solutions-io/perception-with-intent
+    source: https://github.com/intent-solutions-io/perception-with-intent
+    branch: main
+    commit: "c432cd9a"
+    scope: [agent.py, agent_engine_app.py, perception_app/jvp_agent/__init__.py, perception_app/jvp_agent/a2a.py, perception_app/jvp_agent/agent.py,
+      perception_app/jvp_agent/tools/__init__.py, perception_app/perception_agent/agents/agent_0_orchestrator/__init__.py,
+      perception_app/perception_agent/agents/agent_0_orchestrator/agent.py, perception_app/perception_agent/tools/agent_0_tools.py,
+      scripts/run_ingestion_once.py]
+  issued:
+    by: A2AS.org
+    at: '2026-02-11T16:52:24Z'
+    url: https://a2as.org/certified/agents/intent-solutions-io/perception-with-intent
+  signatures:
+    digest: sha256:xhjiOXHnNAv-ZowXqn2fy7Cai3I801WLEllerMn-c3U
+    key: ed25519:HmU21_ivluEeHV37Q8vslPH-weJ0YNRwFklTaVtlWAU
+    sig: ed25519:Slfyf-6XgADqJxyClLJZkJl5vmSEMBiKHeKAENJDbLrBLFr7IYJXOnD3cAP2HVAW2PLmQo0uqO9U8qIunq3rDg
+
+agents:
+  JVP_AGENT:
+    type: instance
+    models: [gemini-1.5-pro]
+    tools: [echo_command, orchestrate_strategy, vertex_ai_rag_search, PreloadMemoryTool]
+    params:
+      name: iamjvp-commander
+      description: Baseline strategic command agent aligned with the latest ADK + A2A rollout.
+      after_agent_callback: add_session_to_memory
+  root_agent.0:
+    type: instance
+    models: [gemini-2.0-flash]
+    tools: [start_ingestion_run, finalize_ingestion_run, build_daily_ingestion_plan, run_daily_ingestion]
+    params:
+      name: perception_orchestrator
+      description: Root orchestrator for the Perception With Intent news intelligence workflow.
+      instruction: [You are the Editor-in-Chief of Perception With Intent., 'High-level responsibilities:', '- Coordinate
+          source harvesting, relevance scoring, brief writing, alerting, validation, and storage.', '- Ensure each ingestion
+          run produces a coherent executive brief and consistent Firestore state.', 'When invoked for a daily_ingestion run:',
+        1. Start an ingestion run record (run_id)., '2. Execute the full ingestion pipeline which:', '- Harvests fresh articles
+          from all enabled sources', '- Scores and filters articles using user topics', '- Produces a concise executive brief',
+        '- Curates and enhances the Tech section', '- Validates that articles and brief are structurally valid', '- Persists
+          data to Firestore and finalizes the ingestion run', 'If any critical step fails, surface a clear error and mark
+          the run as failed.', 'Note: Technology Desk Editor is the first vertical section editor. In future phases,', 'additional
+          section editors (Business Desk, Politics Desk, etc.) will be added.']
+      instance: root_agent
+  root_agent.1:
+    type: instance
+    models: [gemini-2.0-flash]
+    params:
+      name: perception_orchestrator
+      description: Root orchestrator for the Perception With Intent news intelligence workflow.
+      instruction: [You are the Editor-in-Chief of Perception With Intent., 'High-level responsibilities:', '- Coordinate
+          source harvesting, relevance scoring, brief writing, alerting, validation, and storage.', '- Ensure each ingestion
+          run produces a coherent executive brief and consistent Firestore state.', 'When invoked for a daily_ingestion run:',
+        1. Start an ingestion run record (run_id)., 2. Ask Source Harvester for fresh articles from all enabled sources.,
+        3. Ask Relevance & Ranking to score and filter articles using user topics., 4. Ask Brief Writer to produce a concise
+          executive brief., 5. Ask Technology Desk Editor to curate and enhance the Tech section., 6. Ask Alert & Anomaly
+          Detector whether any alerts should fire., 7. Ask Validator to confirm that articles and brief are structurally valid.,
+        8. Ask Storage Manager to persist data to Firestore and finalize the ingestion run., 'If any critical step fails,
+          surface a clear error and mark the run as failed.', 'Note: Technology Desk Editor is the first vertical section
+          editor. In future phases,', 'additional section editors (Business Desk, Politics Desk, etc.) will be added.']
+      function: create_agent
+      instance: root_agent
+
+models:
+  gemini-1.5-pro:
+    type: literal
+    agents: [JVP_AGENT]
+  gemini-2.0-flash:
+    type: literal
+    agents: [root_agent.1, root_agent.0]
+
+tools:
+  build_daily_ingestion_plan:
+    type: function
+    agents: [root_agent.0]
+    params:
+      description: |-
+        Stub: Build a high-level plan for a daily ingestion run.
+
+        This will eventually:
+        - Read sources from Firestore.
+        - Read topics for the given user (or default topics).
+        - Decide which sub-agents to invoke and in what order.
+
+        Args:
+            user_id: Optional user whose topics should be used.
+
+        Returns:
+            A dict describing the plan (for debugging/telemetry).
+  echo_command:
+    type: function
+    agents: [JVP_AGENT]
+  finalize_ingestion_run:
+    type: function
+    agents: [root_agent.0]
+    params:
+      description: |-
+        Produce a final ingestion run status payload.
+
+        Args:
+            run_id: ID of the ingestion run.
+            success: Whether the run completed successfully.
+            stats: Optional dictionary of counts/metrics
+                   (e.g., articles_ingested, articles_selected, alerts_triggered).
+
+        Returns:
+            A dict representing the final ingestion run state.
+  orchestrate_strategy:
+    type: function
+    agents: [JVP_AGENT]
+  run_daily_ingestion:
+    type: function
+    agents: [root_agent.0]
+    params:
+      description: |-
+        Execute the complete daily ingestion pipeline.
+
+        This orchestrates the full E2E flow:
+        1. Start ingestion run (Agent 0)
+        2. Get active topics (Agent 2)
+        3. Harvest all sources (Agent 1)
+        4. Score articles (Agent 3)
+        5. Filter top articles (Agent 3)
+        6. Build brief payload (Agent 4)
+        7. Validate articles and brief (Agent 6)
+        8. Store articles and brief (Agent 7)
+        9. Update ingestion run with final status (Agent 7)
+
+        Args:
+            user_id: Optional user ID (defaults to system user)
+            trigger: What triggered this run (scheduled, manual, etc.)
+
+        Returns:
+            Complete ingestion result with:
+            - run_id: Ingestion run ID
+            - status: success or failed
+            - stats: Counts and metrics
+            - brief_id: Generated brief ID
+            - errors: Any errors encountered
+  start_ingestion_run:
+    type: function
+    agents: [root_agent.0]
+    params:
+      description: |-
+        Create an ingestion run descriptor.
+
+        Args:
+            trigger: A string describing what kicked off the run
+                     (e.g., "scheduled", "manual_dashboard").
+
+        Returns:
+            A dict with at least:
+            - run_id: string
+            - started_at: ISO8601 timestamp
+            - trigger: original trigger string
+  vertex_ai_rag_search:
+    type: function
+    agents: [JVP_AGENT]
+
+imports:
+  A2aAgent: vertexai.preview.reasoning_engines.A2aAgent
+  add_session_to_memory: jvp_agent.agent.add_session_to_memory
+  AdkAgent: google.adk.agents.Agent
+  Agent: google.adk.agents.Agent
+  AgentExecutor: a2a.server.agent_execution.AgentExecutor
+  AgentSkill: a2a.types.AgentSkill
+  annotations: __future__.annotations
+  Any: typing.Any
+  App: google.adk.apps.App
+  app: agent.app
+  argparse: argparse
+  asyncio: asyncio
+  build_a2a_agent: jvp_agent.a2a.build_a2a_agent
+  build_agent_card: jvp_agent.a2a.build_agent_card
+  build_brief_payload: agent_4_tools.build_brief_payload
+  build_daily_ingestion_plan: perception_app.perception_agent.tools.agent_0_tools.build_daily_ingestion_plan
+  CallbackContext: google.adk.agents.callback_context.CallbackContext
+  CommandAgentExecutor: jvp_agent.a2a.CommandAgentExecutor
+  create_agent: agent.create_agent
+  create_agent_card: vertexai.preview.reasoning_engines.templates.a2a.create_agent_card
+  create_app: agent.create_app
+  csv: csv
+  date: datetime.date
+  datetime: datetime.datetime
+  Dict: typing.Dict
+  echo_command: jvp_agent.tools.echo_tool.echo_command
+  EventQueue: a2a.server.events.EventQueue
+  filter_top_articles: agent_3_tools.filter_top_articles
+  finalize_ingestion_run: perception_app.perception_agent.tools.agent_0_tools.finalize_ingestion_run
+  firestore: google.cloud.firestore
+  genai_types: google.genai.types
+  GenerativeModel: vertexai.generative_models.GenerativeModel
+  get_active_topics: agent_2_tools.get_active_topics
+  harvest_all_sources: agent_1_tools.harvest_all_sources
+  hashlib: hashlib
+  httpx: httpx
+  InMemoryArtifactService: google.adk.artifacts.InMemoryArtifactService
+  InMemoryMemoryService: google.adk.memory.in_memory_memory_service.InMemoryMemoryService
+  InMemorySessionService: google.adk.sessions.InMemorySessionService
+  json: json
+  JVP_AGENT: jvp_agent.agent.JVP_AGENT
+  List: typing.List
+  LlmAgent: google.adk.agents.LlmAgent
+  logging: logging
+  new_agent_text_message: a2a.utils.new_agent_text_message
+  Optional: typing.Optional
+  orchestrate_strategy: jvp_agent.tools.strategic_orchestrator.orchestrate_strategy
+  os: os
+  Path: pathlib.Path
+  PreloadMemoryTool: google.adk.tools.preload_memory_tool.PreloadMemoryTool
+  RequestContext: a2a.server.agent_execution.RequestContext
+  Role: a2a.types.Role
+  root_agent: agent.root_agent
+  run_daily_ingestion: perception_app.perception_agent.tools.agent_0_tools.run_daily_ingestion
+  Runner: google.adk.Runner
+  runner_memory_kwargs: jvp_agent.memory.runner_memory_kwargs
+  score_articles: agent_3_tools.score_articles
+  ServerError: a2a.utils.errors.ServerError
+  settings: jvp_agent.config.settings
+  start_ingestion_run: perception_app.perception_agent.tools.agent_0_tools.start_ingestion_run
+  store_articles: agent_7_tools.store_articles
+  store_brief: agent_7_tools.store_brief
+  sys: sys
+  TaskState: a2a.types.TaskState
+  TaskUpdater: a2a.server.tasks.TaskUpdater
+  telemetry: google.adk.telemetry
+  TextPart: a2a.types.TextPart
+  timezone: datetime.timezone
+  types: google.genai.types
+  update_ingestion_run: agent_7_tools.update_ingestion_run
+  validate_articles: agent_6_tools.validate_articles
+  validate_brief: agent_6_tools.validate_brief
+  vertex_ai_rag_search: jvp_agent.tools.rag_search.vertex_ai_rag_search
+  vertexai: vertexai
+  VertexAiMemoryBankService: google.adk.memory.VertexAiMemoryBankService
+  VertexAiSessionService: google.adk.sessions.VertexAiSessionService
+  yaml: yaml
+
+functions:
+  __init__:
+    type: sync
+    module: perception_app.jvp_agent.a2a
+    args: [self, agent]
+    params:
+      returns: None
+  _build_section:
+    type: sync
+    module: perception_app.perception_agent.tools.agent_4_tools
+    args: [section_name, articles]
+    params:
+      returns: Dict
+  _collect_text:
+    type: sync
+    module: perception_app.jvp_agent.a2a
+    args: [event]
+    params:
+      returns: str
+  _ensure_runner:
+    type: sync
+    module: perception_app.jvp_agent.a2a
+    args: [self]
+    params:
+      returns: None
+  _generate_article_id:
+    type: sync
+    module: perception_app.perception_agent.tools.agent_7_tools
+    args: [url]
+    params:
+      returns: str
+  _generate_brief_id:
+    type: sync
+    module: perception_app.perception_agent.tools.agent_4_tools
+    args: [date_str]
+    params:
+      returns: str
+  _generate_headline:
+    type: sync
+    module: perception_app.perception_agent.tools.agent_4_tools
+    args: [date_str, article_count, sections]
+    params:
+      returns: str
+  _get_db:
+    type: sync
+    module: perception_app.perception_agent.tools.agent_7_tools
+  _get_or_create_session:
+    type: async
+    module: perception_app.jvp_agent.a2a
+    args: [self, session_id]
+  _group_articles_by_section:
+    type: sync
+    module: perception_app.perception_agent.tools.agent_4_tools
+    args: [articles]
+    params:
+      returns: Dict
+  _infer_section:
+    type: sync
+    module: perception_app.perception_agent.tools.agent_3_tools
+    args: [category, title, content, keywords]
+    params:
+      returns: str
+  _load_prompt:
+    type: sync
+    module: perception_app.jvp_agent.agent
+    args: [filename]
+    params:
+      returns: str
+  _score_single_article:
+    type: sync
+    module: perception_app.perception_agent.tools.agent_3_tools
+    args: [article, topics]
+    params:
+      returns: Dict
+  add_session_to_memory:
+    type: async
+    module: perception_app.jvp_agent.agent
+    args: [callback_context]
+    params:
+      returns: Optional[types.Content]
+  analyze_strategic_implications:
+    type: sync
+    module: perception_app.perception_agent.tools.agent_4_tools
+    args: [articles, topics]
+    params:
+      returns: Dict
+  batch_write_articles:
+    type: sync
+    module: perception_app.perception_agent.tools.agent_7_tools
+    args: [articles, batch_size]
+    params:
+      returns: List[Dict]
+  build_a2a_agent:
+    type: sync
+    module: perception_app.jvp_agent.a2a
+    params:
+      returns: A2aAgent
+  build_agent_card:
+    type: sync
+    module: perception_app.jvp_agent.a2a
+    params:
+      returns: Any
+  build_brief_payload:
+    type: sync
+    module: perception_app.perception_agent.tools.agent_4_tools
+    args: [scored_articles, run_id]
+    params:
+      returns: Dict
+  build_daily_ingestion_plan:
+    type: sync
+    module: perception_app.perception_agent.tools.agent_0_tools
+    args: [user_id]
+    params:
+      returns: Dict
+  calculate_brief_metrics:
+    type: sync
+    module: perception_app.perception_agent.tools.agent_4_tools
+    args: [articles]
+    params:
+      returns: Dict
+  cancel:
+    type: async
+    module: perception_app.jvp_agent.a2a
+    args: [self, context, event_queue]
+    params:
+      returns: None
+  create_agent:
+    type: sync
+    module: perception_app.perception_agent.agents.agent_0_orchestrator.agent
+    params:
+      returns: LlmAgent
+  create_app:
+    type: sync
+    module: perception_app.perception_agent.agents.agent_0_orchestrator.agent
+    params:
+      returns: App
+  create_topic:
+    type: sync
+    module: perception_app.perception_agent.tools.agent_2_tools
+    args: [user_id, topic_data]
+    params:
+      returns: Dict
+  deduplicate_by_url:
+    type: sync
+    module: perception_app.perception_agent.tools.agent_7_tools
+    args: [articles]
+    params:
+      returns: List[Dict]
+  delete_topic:
+    type: sync
+    module: perception_app.perception_agent.tools.agent_2_tools
+    args: [user_id, topic_id]
+    params:
+      returns: bool
+  detect_duplicates:
+    type: sync
+    module: perception_app.perception_agent.tools.agent_6_tools
+    args: [articles]
+    params:
+      returns: List[Dict]
+  execute:
+    type: async
+    module: perception_app.jvp_agent.a2a
+    args: [self, context, event_queue]
+    params:
+      returns: None
+  extract_highlights:
+    type: sync
+    module: perception_app.perception_agent.tools.agent_4_tools
+    args: [articles, max_highlights]
+    params:
+      returns: List[str]
+  fetch_rss:
+    type: async
+    module: perception_app.perception_agent.tools.agent_1_tools
+    args: [feed_url, time_window_hours, max_items, request_id]
+    params:
+      returns: Dict
+  filter_top_articles:
+    type: sync
+    module: perception_app.perception_agent.tools.agent_3_tools
+    args: [scored_articles, max_per_topic, min_score]
+    params:
+      returns: List[Dict]
+  finalize_ingestion_run:
+    type: sync
+    module: perception_app.perception_agent.tools.agent_0_tools
+    args: [run_id, success, stats]
+    params:
+      returns: Dict
+  generate_author_bio:
+    type: async
+    module: perception_app.perception_agent.tools.agent_4_tools
+    args: [author_id, author_name, articles]
+    params:
+      returns: Dict
+  generate_brief:
+    type: sync
+    module: perception_app.perception_agent.tools.agent_4_tools
+    args: [articles, topics, brief_date]
+    params:
+      returns: Dict
+  generate_executive_summary:
+    type: sync
+    module: perception_app.perception_agent.tools.agent_4_tools
+    args: [articles]
+    params:
+      returns: str
+  generate_url_hash:
+    type: sync
+    module: perception_app.perception_agent.tools.agent_6_tools
+    args: [url]
+    params:
+      returns: str
+  get_active_topics:
+    type: sync
+    module: perception_app.perception_agent.tools.agent_2_tools
+    args: [user_id]
+    params:
+      returns: List[Dict]
+  get_gemini_client:
+    type: sync
+    module: perception_app.perception_agent.tools.agent_4_tools
+  handle_storage_errors:
+    type: sync
+    module: perception_app.perception_agent.tools.agent_7_tools
+    args: [errors]
+    params:
+      returns: None
+  harvest_all_sources:
+    type: async
+    module: perception_app.perception_agent.tools.agent_1_tools
+    args: [time_window_hours, max_items_per_source]
+    params:
+      returns: Dict
+  load_sources_from_csv:
+    type: sync
+    module: perception_app.perception_agent.tools.agent_1_tools
+    params:
+      returns: List[Dict]
+  load_sources_from_firestore:
+    type: sync
+    module: perception_app.perception_agent.tools.agent_1_tools
+    params:
+      returns: List[Dict]
+  load_sources_from_yaml:
+    type: sync
+    module: perception_app.perception_agent.tools.agent_1_tools
+    params:
+      returns: List[Dict]
+  main:
+    type: async
+    module: scripts.run_ingestion_once
+  normalize_article:
+    type: sync
+    module: perception_app.perception_agent.tools.agent_1_tools
+    args: [raw, source_id, category]
+    params:
+      returns: Dict
+  run_daily_ingestion:
+    type: async
+    module: perception_app.perception_agent.tools.agent_0_tools
+    args: [user_id, trigger]
+    params:
+      returns: Dict
+  score_articles:
+    type: sync
+    module: perception_app.perception_agent.tools.agent_3_tools
+    args: [articles, topics]
+    params:
+      returns: List[Dict]
+  start_ingestion_run:
+    type: sync
+    module: perception_app.perception_agent.tools.agent_0_tools
+    args: [trigger]
+    params:
+      returns: Dict
+  store_articles:
+    type: sync
+    module: perception_app.perception_agent.tools.agent_7_tools
+    args: [articles]
+    params:
+      returns: Dict
+  store_brief:
+    type: sync
+    module: perception_app.perception_agent.tools.agent_7_tools
+    args: [brief]
+    params:
+      returns: Dict
+  update_author_bio:
+    type: sync
+    module: perception_app.perception_agent.tools.agent_4_tools
+    args: [author_id, bio]
+    params:
+      returns: Dict
+  update_ingestion_run:
+    type: sync
+    module: perception_app.perception_agent.tools.agent_7_tools
+    args: [run_id, status, stats]
+    params:
+      returns: Dict
+  update_topic:
+    type: sync
+    module: perception_app.perception_agent.tools.agent_2_tools
+    args: [user_id, topic_id, updates]
+    params:
+      returns: Dict
+  upsert_author_for_feed:
+    type: async
+    module: perception_app.perception_agent.tools.agent_1_tools
+    args: [feed_url, articles, feed_metadata]
+    params:
+      returns: Dict
+  validate_article_schema:
+    type: sync
+    module: perception_app.perception_agent.tools.agent_6_tools
+    args: [article]
+    params:
+      returns: Dict
+  validate_articles:
+    type: sync
+    module: perception_app.perception_agent.tools.agent_6_tools
+    args: [articles]
+    params:
+      returns: Dict
+  validate_brief:
+    type: sync
+    module: perception_app.perception_agent.tools.agent_6_tools
+    args: [brief]
+    params:
+      returns: Dict
+  validate_brief_structure:
+    type: sync
+    module: perception_app.perception_agent.tools.agent_6_tools
+    args: [brief]
+    params:
+      returns: Dict
+  validate_topic_structure:
+    type: sync
+    module: perception_app.perception_agent.tools.agent_2_tools
+    args: [topic_data]
+    params:
+      returns: Dict
+  verify_data_quality:
+    type: sync
+    module: perception_app.perception_agent.tools.agent_6_tools
+    args: [article]
+    params:
+      returns: Dict
+
+variables:
+  APP_NAME:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [perception_app.perception_agent.agents.agent_0_orchestrator.agent]
+  MCP_BASE_URL:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [perception_app.perception_agent.tools.agent_1_tools]
+  VERTEX_LOCATION:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [perception_app.perception_agent.tools.agent_4_tools]
+  VERTEX_PROJECT_ID:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [perception_app.perception_agent.tools.agent_4_tools]
+
+files:
+  csv_path:
+    type: variable
+    actions: [read]
+    params:
+      caller: [open, csv.DictReader]
+      alias: [f]
+  initial_feeds.csv:
+    type: literal
+    actions: [read]
+    params:
+      caller: [load_sources_from_csv]
+      path: [Path.parent.parent.parent.parent]
+  path:
+    type: variable
+    actions: [read]
+    params:
+      caller: [path.read_text]
+  rss_sources.yaml:
+    type: literal
+    actions: [read]
+    params:
+      caller: [load_sources_from_yaml]
+      path: [Path.parent.parent]
+  yaml_path:
+    type: variable
+    actions: [read]
+    params:
+      caller: [open, yaml.safe_load]
+      alias: [f]
