@@ -1,21 +1,22 @@
-const { onDocumentCreated } = require("firebase-functions/v2/firestore");
-const { defineSecret } = require("firebase-functions/params");
 const { logger } = require("firebase-functions");
-
-const slackWebhookUrl = defineSecret("SLACK_WEBHOOK_URL");
 
 /**
  * Notify Slack when a new user signs up.
  *
- * Firebase Auth triggers aren't available in v2 yet for all runtimes,
- * so we watch the /users/{userId} Firestore collection instead.
- * If no Firestore doc is created on signup, we fall back to an Auth
- * onCreate trigger (v1).
+ * Uses the v1 Auth onCreate trigger which fires on every
+ * Firebase Auth signup event.
  */
 
-// v1 Auth trigger — fires on every Firebase Auth signup
 const functions = require("firebase-functions");
-const https = require("https");
+
+/** Mask email for logging: "user@example.com" → "us***@example.com" */
+function maskEmail(email) {
+  if (!email) return "no email";
+  const [local, domain] = email.split("@");
+  if (!domain) return "***";
+  const visible = local.slice(0, 2);
+  return `${visible}***@${domain}`;
+}
 
 exports.onNewUser = functions
   .runWith({ secrets: ["SLACK_WEBHOOK_URL"] })
@@ -28,44 +29,31 @@ exports.onNewUser = functions
     }
 
     const createdAt = user.metadata.creationTime || new Date().toISOString();
+    const maskedEmail = maskEmail(user.email);
+    const shortUid = user.uid.slice(0, 8);
+
     const payload = JSON.stringify({
       text: [
         ":new: *New Perception user signup*",
-        `*Email:* ${user.email || "no email"}`,
-        `*UID:* \`${user.uid}\``,
+        `*Email:* ${maskedEmail}`,
+        `*UID:* \`${shortUid}...\``,
         `*Provider:* ${user.providerData?.[0]?.providerId || "email"}`,
         `*Time:* ${createdAt}`,
       ].join("\n"),
     });
 
-    return new Promise((resolve, reject) => {
-      const url = new URL(webhookUrl);
-      const req = https.request(
-        {
-          hostname: url.hostname,
-          path: url.pathname,
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Content-Length": Buffer.byteLength(payload),
-          },
-        },
-        (res) => {
-          let data = "";
-          res.on("data", (chunk) => (data += chunk));
-          res.on("end", () => {
-            if (res.statusCode === 200) {
-              logger.info(`Slack notified for new user: ${user.email}`);
-              resolve(data);
-            } else {
-              logger.error(`Slack webhook failed: ${res.statusCode} ${data}`);
-              reject(new Error(`Slack webhook failed: ${res.statusCode}`));
-            }
-          });
-        }
-      );
-      req.on("error", reject);
-      req.write(payload);
-      req.end();
+    const response = await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: payload,
+      signal: AbortSignal.timeout(10000),
     });
+
+    if (!response.ok) {
+      const body = await response.text();
+      logger.error(`Slack webhook failed: ${response.status} ${body}`);
+      throw new Error(`Slack webhook failed: ${response.status}`);
+    }
+
+    logger.info(`Slack notified for new user: ${maskedEmail}`);
   });
