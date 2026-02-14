@@ -75,6 +75,8 @@ jobs:
             --cpu 1 \
             --min-instances 0 \
             --max-instances 10 \
+            --no-cpu-throttling \
+            --cpu-boost \
             --timeout 300 \
             --port 8080 \
             --set-env-vars "ENVIRONMENT=${{ github.event.inputs.environment }},MCP_SERVICE_NAME=${{ env.SERVICE_NAME }}" \

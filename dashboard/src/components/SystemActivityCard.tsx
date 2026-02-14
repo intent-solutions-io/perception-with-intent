@@ -57,28 +57,35 @@ export default function SystemActivityCard() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    const fetchRuns = async () => {
-      try {
-        const runsRef = collection(db, 'ingestion_runs')
-        const q = query(runsRef, orderBy('startedAt', 'desc'), limit(10))
-        const snapshot = await getDocs(q)
+  const fetchRuns = async () => {
+    try {
+      const runsRef = collection(db, 'ingestion_runs')
+      const q = query(runsRef, orderBy('startedAt', 'desc'), limit(10))
+      const snapshot = await getDocs(q)
 
-        const runsList = snapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data()
-        })) as IngestionRun[]
+      const runsList = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data()
+      })) as IngestionRun[]
 
-        setRuns(runsList)
-      } catch (err) {
-        console.error('Error fetching ingestion runs:', err)
-        setError(err instanceof Error ? err.message : 'Failed to load activity')
-      } finally {
-        setLoading(false)
-      }
+      setRuns(runsList)
+    } catch (err) {
+      console.error('Error fetching ingestion runs:', err)
+      setError(err instanceof Error ? err.message : 'Failed to load activity')
+    } finally {
+      setLoading(false)
     }
+  }
 
+  useEffect(() => {
     fetchRuns()
+  }, [])
+
+  // Auto-refresh when ingestion completes
+  useEffect(() => {
+    const handler = () => fetchRuns()
+    window.addEventListener('ingestion-complete', handler)
+    return () => window.removeEventListener('ingestion-complete', handler)
   }, [])
 
   if (loading) {

@@ -87,7 +87,7 @@ async def root():
             "/mcp/tools/log_ingestion_run",
             "/mcp/tools/send_notification",
         ],
-        "triggers": ["/trigger/ingestion"],
+        "triggers": ["/trigger/ingestion", "/trigger/ingestion/{run_id}"],
     }
 
 

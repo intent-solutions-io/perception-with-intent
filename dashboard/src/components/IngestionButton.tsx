@@ -1,14 +1,137 @@
-import { useState } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 
 const MCP_URL = 'https://perception-mcp-w53xszfqnq-uc.a.run.app'
 
+type RunPhase =
+  | 'idle'
+  | 'starting'
+  | 'loading_sources'
+  | 'fetching_feeds'
+  | 'storing_articles'
+  | 'upserting_authors'
+  | 'done'
+
+const PHASE_LABELS: Record<string, string> = {
+  starting: 'Starting...',
+  initializing: 'Starting...',
+  accepted: 'Starting...',
+  loading_sources: 'Loading sources...',
+  fetching_feeds: 'Fetching feeds...',
+  storing_articles: 'Storing articles...',
+  upserting_authors: 'Upserting authors...',
+  done: 'Finishing up...',
+}
+
+const POLL_INTERVAL_MS = 3000
+const STUCK_TIMEOUT_MS = 5 * 60 * 1000 // 5 minutes
+
 export default function IngestionButton() {
-  const [ingesting, setIngesting] = useState(false)
+  const [phase, setPhase] = useState<RunPhase>('idle')
+  const [stats, setStats] = useState<Record<string, number> | null>(null)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const startTimeRef = useRef<number>(0)
+
+  const stopPolling = useCallback(() => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current)
+      pollRef.current = null
+    }
+  }, [])
+
+  const handleComplete = useCallback(
+    (data: {
+      status: string
+      stats?: Record<string, number>
+      errors?: Array<{ message: string }>
+      is_successful?: boolean
+    }) => {
+      stopPolling()
+      setPhase('idle')
+      setStats(null)
+
+      const stored = data.stats?.articlesStored || 0
+      const sources = data.stats?.sourcesChecked || 0
+      const errorCount = data.errors?.length || 0
+
+      if (data.status === 'failed') {
+        toast.error('Ingestion failed', {
+          description: data.errors?.[0]?.message || 'Check logs for details',
+        })
+      } else if (errorCount > 0) {
+        toast.success(
+          `Stored ${stored} articles from ${sources} sources`,
+          {
+            description: `${errorCount} source${errorCount > 1 ? 's' : ''} had errors`,
+          }
+        )
+      } else {
+        toast.success(
+          `Stored ${stored} articles from ${sources} sources`,
+          {
+            description: `Completed successfully`,
+          }
+        )
+      }
+
+      // Notify SystemActivityCard to refresh
+      window.dispatchEvent(new CustomEvent('ingestion-complete'))
+    },
+    [stopPolling]
+  )
+
+  const pollStatus = useCallback(
+    (runId: string) => {
+      pollRef.current = setInterval(async () => {
+        // Stuck run detection
+        if (Date.now() - startTimeRef.current > STUCK_TIMEOUT_MS) {
+          stopPolling()
+          setPhase('idle')
+          setStats(null)
+          toast.warning('Ingestion may be stuck', {
+            description: 'The run has been active for over 5 minutes. Check Cloud Run logs.',
+          })
+          return
+        }
+
+        try {
+          const res = await fetch(`${MCP_URL}/trigger/ingestion/${runId}`)
+          if (!res.ok) {
+            return // Retry on next poll
+          }
+
+          const data = await res.json()
+
+          // Update phase display
+          if (data.phase && data.phase !== 'done') {
+            setPhase(data.phase as RunPhase)
+          }
+
+          // Update stats for display
+          if (data.stats) {
+            setStats(data.stats)
+          }
+
+          // Check for terminal state
+          if (
+            data.status === 'completed' ||
+            data.status === 'completed_with_errors' ||
+            data.status === 'failed'
+          ) {
+            handleComplete(data)
+          }
+        } catch {
+          // Network error - keep polling, might recover
+        }
+      }, POLL_INTERVAL_MS)
+    },
+    [stopPolling, handleComplete]
+  )
 
   const handleRunIngestion = async () => {
-    setIngesting(true)
+    setPhase('starting')
+    startTimeRef.current = Date.now()
 
     try {
       const response = await fetch(`${MCP_URL}/trigger/ingestion`, {
@@ -21,53 +144,84 @@ export default function IngestionButton() {
         }),
       })
 
-      if (response.ok) {
+      if (response.status === 409) {
         const data = await response.json()
-        const stored = data.articles_stored || 0
-        const sources = data.sources_processed || 0
-        const duration = data.duration_seconds || 0
-        const errorCount = data.errors?.length || 0
-
-        if (errorCount > 0) {
-          toast.success(`Stored ${stored} articles from ${sources} sources (${duration.toFixed(1)}s)`, {
-            description: `${errorCount} source${errorCount > 1 ? 's' : ''} had errors`,
-          })
-        } else {
-          toast.success(`Stored ${stored} articles from ${sources} sources`, {
-            description: `Completed in ${duration.toFixed(1)} seconds`,
-          })
-        }
-      } else {
-        toast.warning('Ingestion service unavailable', {
-          description: 'The MCP service may be restarting. Try again in a moment.',
+        setPhase('idle')
+        toast.warning('Ingestion already in progress', {
+          description: `Run ${data.detail?.active_run_id || ''} is still active. Wait for it to finish.`,
         })
+        return
       }
+
+      if (response.status === 202) {
+        const data = await response.json()
+        toast.info('Ingestion started', {
+          description: `Run ID: ${data.run_id}`,
+        })
+        pollStatus(data.run_id)
+        return
+      }
+
+      // Unexpected status
+      setPhase('idle')
+      toast.warning('Ingestion service unavailable', {
+        description: 'The MCP service may be restarting. Try again in a moment.',
+      })
     } catch {
+      setPhase('idle')
       toast.error('Failed to connect to ingestion service', {
         description: 'Check your network connection and try again.',
       })
-    } finally {
-      setIngesting(false)
     }
   }
 
+  const isRunning = phase !== 'idle'
+  const phaseLabel = PHASE_LABELS[phase] || 'Processing...'
+
   return (
-    <Button
-      onClick={handleRunIngestion}
-      disabled={ingesting}
-      className="w-full sm:w-auto"
-    >
-      {ingesting ? (
-        <>
-          <svg className="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-          </svg>
-          Running Ingestion...
-        </>
-      ) : (
-        'Run Ingestion'
+    <div className="flex flex-col gap-1">
+      <Button
+        onClick={handleRunIngestion}
+        disabled={isRunning}
+        className="w-full sm:w-auto"
+      >
+        {isRunning ? (
+          <>
+            <svg
+              className="animate-spin -ml-1 mr-2 h-4 w-4"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle
+                className="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                strokeWidth="4"
+              ></circle>
+              <path
+                className="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              ></path>
+            </svg>
+            {phaseLabel}
+          </>
+        ) : (
+          'Run Ingestion'
+        )}
+      </Button>
+      {isRunning && stats && (
+        <span className="text-xs text-muted-foreground">
+          {stats.articlesFetched !== undefined &&
+            `${stats.articlesFetched} articles fetched`}
+          {stats.articlesStored !== undefined &&
+            stats.articlesStored > 0 &&
+            ` · ${stats.articlesStored} stored`}
+        </span>
       )}
-    </Button>
+    </div>
   )
 }
