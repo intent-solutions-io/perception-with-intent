@@ -1,6 +1,6 @@
 # RSS Feed Sources for Perception News Intelligence
 # Generated: 2025-12-29
-# Total: 128 verified active feeds across 22 categories
+# Total: 129 verified active feeds across 22 categories
 # Source: Comprehensive feed testing + GitHub RSS collections + Brex Top 100 SaaS
 
 sources:
@@ -129,7 +129,7 @@ sources:
     category: "heavy_equipment"
     active: true
 
-  # ===== AI/ML RESEARCH (3 feeds) =====
+  # ===== AI/ML RESEARCH (4 feeds) =====
   - name: "MIT AI News"
     url: "https://news.mit.edu/rss/topic/artificial-intelligence2"
     category: "ai"
@@ -142,6 +142,11 @@ sources:
 
   - name: "Amazon Science"
     url: "https://www.amazon.science/index.rss"
+    category: "ai"
+    active: true
+
+  - name: "LangChain Blog"
+    url: "https://blog.langchain.com/rss/"
     category: "ai"
     active: true
 
