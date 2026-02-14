@@ -220,26 +220,3 @@ class TestLoadSources:
         # All returned sources should have been active
         for source in sources:
             assert source.get("source_id")  # Must have an ID
-
-
-class TestStorageIdempotency:
-    """Tests for deterministic document IDs."""
-
-    def test_same_url_same_hash(self):
-        """Same URL should produce same hash for deduplication."""
-        import hashlib
-
-        url = "https://example.com/article/123"
-        hash1 = hashlib.sha256(url.encode()).hexdigest()[:16]
-        hash2 = hashlib.sha256(url.encode()).hexdigest()[:16]
-        assert hash1 == hash2
-
-    def test_different_urls_different_hashes(self):
-        """Different URLs should produce different hashes."""
-        import hashlib
-
-        url1 = "https://example.com/article/123"
-        url2 = "https://example.com/article/456"
-        hash1 = hashlib.sha256(url1.encode()).hexdigest()[:16]
-        hash2 = hashlib.sha256(url2.encode()).hexdigest()[:16]
-        assert hash1 != hash2

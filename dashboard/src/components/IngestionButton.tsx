@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 
@@ -7,6 +7,8 @@ const MCP_URL = 'https://perception-mcp-w53xszfqnq-uc.a.run.app'
 type RunPhase =
   | 'idle'
   | 'starting'
+  | 'accepted'
+  | 'initializing'
   | 'loading_sources'
   | 'fetching_feeds'
   | 'storing_articles'
@@ -30,15 +32,20 @@ const STUCK_TIMEOUT_MS = 5 * 60 * 1000 // 5 minutes
 export default function IngestionButton() {
   const [phase, setPhase] = useState<RunPhase>('idle')
   const [stats, setStats] = useState<Record<string, number> | null>(null)
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const startTimeRef = useRef<number>(0)
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) {
-      clearInterval(pollRef.current)
+      clearTimeout(pollRef.current)
       pollRef.current = null
     }
   }, [])
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => stopPolling()
+  }, [stopPolling])
 
   const handleComplete = useCallback(
     (data: {
@@ -83,7 +90,7 @@ export default function IngestionButton() {
 
   const pollStatus = useCallback(
     (runId: string) => {
-      pollRef.current = setInterval(async () => {
+      const poll = async () => {
         // Stuck run detection
         if (Date.now() - startTimeRef.current > STUCK_TIMEOUT_MS) {
           stopPolling()
@@ -98,7 +105,9 @@ export default function IngestionButton() {
         try {
           const res = await fetch(`${MCP_URL}/trigger/ingestion/${runId}`)
           if (!res.ok) {
-            return // Retry on next poll
+            // Retry on next poll
+            pollRef.current = setTimeout(poll, POLL_INTERVAL_MS)
+            return
           }
 
           const data = await res.json()
@@ -120,11 +129,18 @@ export default function IngestionButton() {
             data.status === 'failed'
           ) {
             handleComplete(data)
+            return
           }
         } catch {
           // Network error - keep polling, might recover
         }
-      }, POLL_INTERVAL_MS)
+
+        // Schedule next poll only after current one completes
+        pollRef.current = setTimeout(poll, POLL_INTERVAL_MS)
+      }
+
+      // Start first poll after delay
+      pollRef.current = setTimeout(poll, POLL_INTERVAL_MS)
     },
     [stopPolling, handleComplete]
   )

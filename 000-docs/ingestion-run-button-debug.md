@@ -2,7 +2,7 @@
 
 ## System Map
 
-```
+```text
 Dashboard (IngestionButton.tsx)
     │
     ├── POST /trigger/ingestion → 202 Accepted {run_id, poll_url}
@@ -25,7 +25,7 @@ Dashboard (IngestionButton.tsx)
 - **Cause**: POST failed (network, CORS, Cloud Run cold start timeout)
 - **Debug**:
   ```bash
-  curl -X POST https://perception-mcp-w53xszfqnq-uc.a.run.app/trigger/ingestion \
+  curl -X POST <SERVICE_URL>/trigger/ingestion \
     -H "Content-Type: application/json" \
     -d '{"trigger":"manual"}'
   ```
@@ -74,7 +74,7 @@ Dashboard (IngestionButton.tsx)
 - **Cause**: All feeds failed, or `store_articles` endpoint broken
 - **Debug**:
   ```bash
-  curl -X POST https://perception-mcp-w53xszfqnq-uc.a.run.app/mcp/tools/store_articles \
+  curl -X POST <SERVICE_URL>/mcp/tools/store_articles \
     -H "Content-Type: application/json" \
     -d '{"run_id":"test","articles":[{"title":"t","url":"https://x.com","source_id":"s","published_at":"2025-01-01"}]}'
   ```
@@ -120,15 +120,15 @@ gcloud firestore documents get \
 ### curl Commands
 ```bash
 # Health check
-curl https://perception-mcp-w53xszfqnq-uc.a.run.app/health
+curl <SERVICE_URL>/health
 
 # Trigger ingestion
-curl -X POST https://perception-mcp-w53xszfqnq-uc.a.run.app/trigger/ingestion \
+curl -X POST <SERVICE_URL>/trigger/ingestion \
   -H "Content-Type: application/json" \
   -d '{"trigger":"manual","time_window_hours":24,"max_items_per_source":50}'
 
 # Check run status
-curl https://perception-mcp-w53xszfqnq-uc.a.run.app/trigger/ingestion/run-XXXXX
+curl <SERVICE_URL>/trigger/ingestion/run-XXXXX
 ```
 
 ## SLO Targets

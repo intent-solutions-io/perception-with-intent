@@ -123,7 +123,16 @@ async def check_active_run(db: firestore.Client) -> Optional[str]:
             if hasattr(started_at, "timestamp"):
                 age_seconds = time.time() - started_at.timestamp()
             else:
-                age_seconds = 0
+                logger.error(
+                    json.dumps(
+                        {
+                            "severity": "ERROR",
+                            "message": f"Invalid startedAt type for run {doc.id}: {type(started_at)}",
+                            "router": "trigger",
+                        }
+                    )
+                )
+                age_seconds = 601  # Treat as stale to avoid blocking all future runs
 
             if age_seconds < 600:  # 10 minutes
                 return doc.id

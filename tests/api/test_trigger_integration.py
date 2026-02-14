@@ -48,7 +48,8 @@ def client():
     with patch("routers.trigger._get_db", return_value=mock_db):
         from main import app
 
-        yield TestClient(app)
+        with TestClient(app) as client:
+            yield client
 
 
 @pytest.fixture
@@ -75,7 +76,8 @@ def client_with_active_run():
     with patch("routers.trigger._get_db", return_value=mock_db):
         from main import app
 
-        yield TestClient(app)
+        with TestClient(app) as client:
+            yield client
 
 
 class TestTriggerIngestionEndpoint:
@@ -148,8 +150,8 @@ class TestGetIngestionStatus:
         with patch("routers.trigger._get_db", return_value=mock_db):
             from main import app
 
-            client = TestClient(app)
-            response = client.get("/trigger/ingestion/run-test123")
+            with TestClient(app) as client:
+                response = client.get("/trigger/ingestion/run-test123")
 
         assert response.status_code == 200
         data = response.json()
@@ -168,8 +170,8 @@ class TestGetIngestionStatus:
         with patch("routers.trigger._get_db", return_value=mock_db):
             from main import app
 
-            client = TestClient(app)
-            response = client.get("/trigger/ingestion/run-doesnotexist")
+            with TestClient(app) as client:
+                response = client.get("/trigger/ingestion/run-doesnotexist")
 
         assert response.status_code == 404
 
@@ -197,8 +199,8 @@ class TestGetIngestionStatus:
         with patch("routers.trigger._get_db", return_value=mock_db):
             from main import app
 
-            client = TestClient(app)
-            response = client.get("/trigger/ingestion/run-completed")
+            with TestClient(app) as client:
+                response = client.get("/trigger/ingestion/run-completed")
 
         assert response.status_code == 200
         data = response.json()

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { collection, query, orderBy, limit, getDocs } from 'firebase/firestore'
 import { db } from '../firebase'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -57,12 +57,13 @@ export default function SystemActivityCard() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const fetchRuns = async () => {
+  const fetchRuns = useCallback(async () => {
     try {
       const runsRef = collection(db, 'ingestion_runs')
       const q = query(runsRef, orderBy('startedAt', 'desc'), limit(10))
       const snapshot = await getDocs(q)
 
+      setError(null)
       const runsList = snapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data()
@@ -75,18 +76,18 @@ export default function SystemActivityCard() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
     fetchRuns()
-  }, [])
+  }, [fetchRuns])
 
   // Auto-refresh when ingestion completes
   useEffect(() => {
     const handler = () => fetchRuns()
     window.addEventListener('ingestion-complete', handler)
     return () => window.removeEventListener('ingestion-complete', handler)
-  }, [])
+  }, [fetchRuns])
 
   if (loading) {
     return <ActivitySkeleton />
