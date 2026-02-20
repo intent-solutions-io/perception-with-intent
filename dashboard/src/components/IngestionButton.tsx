@@ -145,6 +145,20 @@ export default function IngestionButton() {
     [stopPolling, handleComplete]
   )
 
+  // Listen for auto-ingestion started by useAutoIngestion hook
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const runId = (e as CustomEvent<{ run_id: string }>).detail.run_id
+      if (phase === 'idle' && runId) {
+        setPhase('starting')
+        startTimeRef.current = Date.now()
+        pollStatus(runId)
+      }
+    }
+    window.addEventListener('auto-ingestion-started', handler)
+    return () => window.removeEventListener('auto-ingestion-started', handler)
+  }, [phase, pollStatus])
+
   const handleRunIngestion = async () => {
     setPhase('starting')
     startTimeRef.current = Date.now()

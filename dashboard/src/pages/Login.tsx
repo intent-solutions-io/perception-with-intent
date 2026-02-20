@@ -25,7 +25,7 @@ export default function Login() {
       } else {
         await signInWithEmailAndPassword(auth, email, password)
       }
-      navigate('/')
+      navigate('/dashboard')
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Authentication failed'
       toast.error('Authentication Failed', { description: message })

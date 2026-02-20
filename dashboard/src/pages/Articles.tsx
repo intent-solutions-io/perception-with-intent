@@ -234,11 +234,13 @@ export default function Articles() {
 
       try {
         const articlesRef = collection(db, 'articles')
+        const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString()
         let q
 
         if (selectedCategory === 'all') {
           q = query(
             articlesRef,
+            where('published_at', '>=', cutoff),
             orderBy('published_at', 'desc'),
             limit(100)
           )
@@ -246,6 +248,7 @@ export default function Articles() {
           q = query(
             articlesRef,
             where('category', '==', selectedCategory),
+            where('published_at', '>=', cutoff),
             orderBy('published_at', 'desc'),
             limit(100)
           )

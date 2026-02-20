@@ -7,6 +7,7 @@ import SystemActivityCard from '../components/SystemActivityCard'
 import AuthorsCard from '../components/AuthorsCard'
 import FooterBranding from '../components/FooterBranding'
 import IngestionButton from '../components/IngestionButton'
+import useAutoIngestion from '../hooks/useAutoIngestion'
 
 // Stagger animation variants for cards
 const containerVariants = {
@@ -32,6 +33,8 @@ const itemVariants = {
 }
 
 export default function Dashboard() {
+  useAutoIngestion()
+
   return (
     <motion.div
       initial="hidden"

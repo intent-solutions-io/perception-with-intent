@@ -128,8 +128,9 @@ def is_within_time_window(published_at: str, time_window_hours: int) -> bool:
         article_time = datetime.fromisoformat(published_at.replace('Z', '+00:00'))
         cutoff_time = datetime.now(tz=timezone.utc) - timedelta(hours=time_window_hours)
         return article_time >= cutoff_time
-    except Exception:
-        return True  # Include if we can't parse date
+    except Exception as e:
+        logger.warning(f"is_within_time_window: failed to parse '{published_at}': {e}")
+        return False  # Exclude if we can't parse date
 
 
 # Tool Endpoint
