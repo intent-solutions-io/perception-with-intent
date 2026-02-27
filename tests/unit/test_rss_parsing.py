@@ -207,13 +207,13 @@ class TestIsWithinTimeWindow:
 
         assert result is True  # Within window
 
-    def test_malformed_date_returns_true(self):
-        """Test malformed date returns True (inclusive)."""
+    def test_malformed_date_returns_false(self):
+        """Test malformed date returns False (exclude unparseable articles)."""
         from perception_app.mcp_service.routers.rss import is_within_time_window
 
         result = is_within_time_window("not-a-date", 24)
 
-        assert result is True
+        assert result is False
 
     def test_with_z_suffix(self):
         """Test date with Z timezone suffix."""
