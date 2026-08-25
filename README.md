@@ -8,6 +8,8 @@ Stop manually checking 50 news sources every morning. Perception monitors everyt
 
 ---
 
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/U5S225PTME)
+
 ## What Is This?
 
 Perception is a production example of an AI agent system built on Google Cloud. It demonstrates how to architect, deploy, and operate multi-agent systems for real-world intelligence gathering.
